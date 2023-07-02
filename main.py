@@ -207,7 +207,7 @@ for t in range(2):
         if isinstance(event_start, datetime.datetime):
             event_start = event_start.date()
         #Filter events if needed
-        if event.decoded('SUMMARY') != bytes('Ace & Aro Abend', 'utf-8'): 
+        if event.decoded('SUMMARY') != bytes('', 'utf-8'): 
             print(event.decoded('SUMMARY'))
             print(type(event.decoded('SUMMARY')))
             events_by_date[event_start].append(event)
@@ -376,9 +376,9 @@ for t in range(2):
     # Add title
     title_style = getSampleStyleSheet()["Title"]
     if t == 0:
-        title_text = f"Woche vom {start_of_week.strftime('%d %b %Y')} bis {end_of_week.strftime('%d %b %Y')}"
+        title_text = f"Veranstaltungen der Woche vom {start_of_week.strftime('%d %b %Y')} bis {end_of_week.strftime('%d %b %Y')}"
     else:
-        title_text = f"<i>Week of {start_of_week.strftime('%d %b %Y')} to {end_of_week.strftime('%d %b %Y')}</i>"
+        title_text = f"<i>Events of the week from {start_of_week.strftime('%d %b %Y')} to {end_of_week.strftime('%d %b %Y')}</i>"
 
     
     title = Paragraph(title_text, title_style)
