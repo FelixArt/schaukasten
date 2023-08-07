@@ -1,31 +1,3 @@
-import importlib.util
-import subprocess
-
-# Check if a library is installed
-def library_installed(library_name):
-    spec = importlib.util.find_spec(library_name)
-    return spec is not None
-
-# Install a library using pip
-def install_library(library_name):
-    subprocess.check_call(['pip', 'install', library_name])
-
-# List of required libraries
-required_libraries = ["os", "re", "datetime", "requests", "locale", "icalendar",
-                      "reportlab", "dateutil", "random", "pytz"]
-
-# Check and install missing libraries
-missing_libraries = []
-for library in required_libraries:
-    if not library_installed(library):
-        missing_libraries.append(library)
-
-if missing_libraries:
-    print("Installing missing libraries...")
-    for library in missing_libraries:
-        install_library(library)
-
-# Import the installed libraries
 import os
 import re
 import datetime
