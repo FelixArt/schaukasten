@@ -252,23 +252,12 @@ for t in range(2):
             event_time = f"{event.decoded('DTSTART').astimezone(local_timezone).strftime('%H:%M')} - {event.decoded('DTEND').astimezone(local_timezone).strftime('%H:%M')}"
             event_location = "<br/>" + event.get('LOCATION', '') if event.get('LOCATION', '') != location_variable else ''
             event_description = re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', ''))
-            if t == 0:
-                if "----" in event_description:
-                    event_description = event_description.split("----")[0]
-                elif "_______________" in event_description:
-                    event_description = event_description.split("_______________")[0]
-                elif "______________" in event_description:
-                    event_description = event_description.split("______________")[0]
-                
-
-            else:
-                if "----" in event_description:
-                    event_description = event_description.split("----")[1]
-                elif "_______________" in event_description:
-                    event_description = event_description.split("_______________")[1]
-                elif "______________" in event_description:
-                    event_description = event_description.split("______________")[1]
-            
+            if "----" in event_description:
+                event_description = event_description.split("----")[t]
+            elif "_______________" in event_description:
+                event_description = event_description.split("_______________")[t]
+            elif "______________" in event_description:
+                event_description = event_description.split("______________")[t]
 
             styles = getSampleStyleSheet()
             cell_style = styles["BodyText"]
