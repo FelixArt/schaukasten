@@ -41,8 +41,6 @@ def get_color(event_name):
         # Add more event names and corresponding colors as key-value pairs
     }
 
-    print(event_color_mapping.get(event_name))
-
     # We use "or" instead of the default kwarg of .get() as this avoid calculating the value unnecessarily
     return event_color_mapping.get(event_name) or colors.HexColor(ColorHash(event_name).hex)
 
