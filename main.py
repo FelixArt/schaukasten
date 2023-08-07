@@ -13,6 +13,38 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm, mm
 from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
+from colorhash import ColorHash
+
+def get_color(event_name):
+    # Define event name to color mapping
+    event_color_mapping = {
+        'Filmabend': colors.HexColor("#E78080"),
+        'Queer Feminist Action': colors.HexColor("#88E780"),
+        'Queercafé': colors.HexColor("#E780DB"),
+        'Trans-Beratung': colors.HexColor("#80E7E1"),
+        'test²multiply': colors.HexColor("#F6A97C"),
+        'International Evening': colors.HexColor("#80E7A7"),
+        'Ace & Aro Abend': colors.HexColor("#E7E680"),
+        'Fesseltreff': colors.HexColor("#AA80E7"),
+        'Bi-Pan* and Friends': colors.HexColor("#E7C280"),
+        'FLINTA-Abend': colors.HexColor("#DF80E7"),
+        'Plenum': colors.HexColor("#8081E7"),
+        'Spieleabend': colors.HexColor("#E7D080"),
+        'TIN* Abend': colors.HexColor("#84D980"),
+        'Poly Abend': colors.HexColor("#D2D984"),
+        'Warm Up': colors.HexColor("#F05252"),
+        'Anime Abend (Film)': colors.HexColor("#f2966f"),
+        'Anime Abend Serie': colors.HexColor("#BDF370"),
+        'Bibliothekstreffen': colors.HexColor("#99FFFC"),
+
+
+        # Add more event names and corresponding colors as key-value pairs
+    }
+
+    print(event_color_mapping.get(event_name))
+
+    # We use "or" instead of the default kwarg of .get() as this avoid calculating the value unnecessarily
+    return event_color_mapping.get(event_name) or colors.HexColor(ColorHash(event_name).hex)
 
 
 # Output directory and name
@@ -231,6 +263,7 @@ for t in range(2):
             elif "______________" in event_description:
                 event_description = event_description.split("______________")[t]
 
+
             styles = getSampleStyleSheet()
             cell_style = styles["BodyText"]
             cell_style.fontSize = 12
@@ -263,31 +296,6 @@ for t in range(2):
         ('SPAN', (0, 1), (0, 2))
     ]
 
-    # Define event name to color mapping
-    event_color_mapping = {
-        'Filmabend': colors.HexColor("#E78080"),
-        'Queer Feminist Action': colors.HexColor("#88E780"),
-        'Queercafé': colors.HexColor("#E780DB"),
-        'Trans-Beratung': colors.HexColor("#80E7E1"),
-        'test²multiply': colors.HexColor("#F6A97C"),
-        'International Evening': colors.HexColor("#80E7A7"),
-        'Ace & Aro Abend': colors.HexColor("#E7E680"),
-        'Fesseltreff': colors.HexColor("#AA80E7"),
-        'Bi-Pan* and Friends': colors.HexColor("#E7C280"),
-        'FLINTA-Abend': colors.HexColor("#DF80E7"),
-        'Plenum': colors.HexColor("#8081E7"),
-        'Spieleabend': colors.HexColor("#E7D080"),
-        'TIN* Abend': colors.HexColor("#84D980"),
-        'Poly Abend': colors.HexColor("#D2D984"),
-        'Warm Up': colors.HexColor("#F05252"),
-        'Anime Abend (Film)': colors.HexColor("#f2966f"),
-        'Anime Abend Serie': colors.HexColor("#BDF370"),
-        'Bibliothekstreffen': colors.HexColor("#99FFFC"),
-
-
-        # Add more event names and corresponding colors as key-value pairs
-    }
-
     
 
     spanned_cell_color = None  # Initialize spanned_cell_color variable
@@ -299,14 +307,11 @@ for t in range(2):
             cell_content = cell
             # Extract the first line (bolded) from the cell contents
             cell_content_lines = re.findall(r"<b>(.*?)</b>", str(cell_content))
-            event_name = cell_content_lines[0].strip() if cell_content_lines else ''
-            
-            if event_name not in event_color_mapping and event_name not in tmp_colors:
-                tmp_colors[event_name] = (random.uniform(0.7, 1), random.uniform(0.7, 1), random.uniform(0.7, 1)) 
+            event_name = cell_content_lines[0].strip() if cell_content_lines else '' 
 
 
             rowheights = 470 / rowamount
-            color_to_use = event_color_mapping.get(event_name) if event_color_mapping.get(event_name) else tmp_colors.get(event_name)
+            color_to_use = get_color(event_name)
             if row_index > 0 and row_index < rowamount:
                 if data[row_index][col_index] != '':
                         table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
