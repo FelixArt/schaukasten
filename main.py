@@ -15,7 +15,18 @@ from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
 from colorhash import ColorHash
 
-def get_color(event_name):
+class Event:
+    def __init__(self, event, start_time=None, end_time=None):
+        self.title = event.decoded('SUMMARY').decode('utf8')
+        self.descriptions = re.split("([-_])\\1{4}\\1*", re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', '')))
+        del self.descriptions[1::2]
+        self.start_time = start_time or event.decoded('DTSTART')
+        self.end_time = end_time or event.decoded('DTEND')
+        self.uid = event.get('UID')
+        self.last_modified = event.decoded('LAST-MODIFIED')
+        self.location = event.get('LOCATION', '')
+
+def get_color(event_name: str):
     # Define event name to color mapping
     event_color_mapping = {
         'Filmabend': colors.HexColor("#E78080"),
@@ -36,8 +47,6 @@ def get_color(event_name):
         'Anime Abend (Film)': colors.HexColor("#f2966f"),
         'Anime Abend Serie': colors.HexColor("#BDF370"),
         'Bibliothekstreffen': colors.HexColor("#99FFFC"),
-
-
         # Add more event names and corresponding colors as key-value pairs
     }
 
@@ -46,47 +55,10 @@ def get_color(event_name):
 
 
 # Output directory and name
-    
 current_directory = os.getcwd()
 current_week = datetime.datetime.now().strftime('%Y-%W')
 
-# List of colors that are not set
-tmp_colors = {}
-
-for t in range(2):
-
-
-
-    
-    # Define the output directory and filename
-    if t == 0:
-        locale.setlocale(locale.LC_TIME, 'de_DE')
-        output_filename = f'event_overview_{current_week}_de.pdf'
-    else:
-        locale.setlocale(locale.LC_TIME, 'en_US')
-        output_filename = f'event_overview_{current_week}_en.pdf'
-    
-    
-
-    output_path = os.path.join(current_directory, output_filename)
-    
-    
-
-
-    # Check if the output file already exists
-    if os.path.exists(output_path):
-        suffix = 1
-        base_name, extension = os.path.splitext(output_filename)
-        
-        # Generate a new filename with an ascending suffix
-        while os.path.exists(output_path):
-            new_filename = f"{base_name}({suffix}){extension}"
-            output_path = os.path.join(current_directory, new_filename)
-            suffix += 1
-
-
-    rowamount = 0
-
+def getEvents(week: datetime.datetime):
     # Fetch data from the iCal URL
     ical_url = 'https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics'
     response = requests.get(ical_url)
@@ -94,15 +66,12 @@ for t in range(2):
         print('Failed to fetch iCal data.')
         exit()
 
-    # Set your local timezone
-    local_timezone = pytz.timezone('Europe/Berlin')
-
     # Parse iCal data
     calendar = Calendar.from_ical(response.text)
 
     events_of_week = []
     # Get the events of the current week
-    current_date = datetime.datetime.now().date()
+    current_date = week.date()
     start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
     end_of_week = start_of_week + datetime.timedelta(days=6)
 
@@ -113,12 +82,13 @@ for t in range(2):
             event_start = event.decoded('DTSTART')
             if isinstance(event_start, datetime.datetime):
                 event_start = event_start.date()
+
             event_end = event.decoded('DTEND')
             if isinstance(event_end, datetime.datetime):
                 event_end = event_end.date()
 
             if start_of_week <= event_start <= end_of_week or start_of_week <= event_end <= end_of_week:
-                events_of_week.append(event)
+                events_of_week.append(Event(event))
 
             # Recurring event
             if event.get('RRULE'):
@@ -143,6 +113,7 @@ for t in range(2):
                     event_start_time = event.decoded('DTSTART')
                     if isinstance(event_start_time, datetime.datetime):
                         event_start_time = event_start_time.time()
+                    
                     event_end_time = event.decoded('DTEND')
                     if isinstance(event_end_time, datetime.datetime):
                         event_end_time = event_end_time.time()
@@ -163,16 +134,49 @@ for t in range(2):
                             until_value = until_value.astimezone(pytz.UTC)
                             new_event['RRULE']['UNTIL'] = [until_value]
 
-                    recurring_events.append(new_event)
+                    recurring_events.append(Event(new_event))
 
                 events_of_week.extend(recurring_events)
+    
+    return events_of_week
 
+events_of_week = getEvents(datetime.datetime.now())
+current_date = datetime.datetime.now().date()
+start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
+end_of_week = start_of_week + datetime.timedelta(days=6)
+
+for t in range(2):
+    # Define the output directory and filename
+    if t == 0:
+        locale.setlocale(locale.LC_TIME, 'de_DE')
+        output_filename = f'event_overview_{current_week}_de.pdf'
+    else:
+        locale.setlocale(locale.LC_TIME, 'en_US')
+        output_filename = f'event_overview_{current_week}_en.pdf'
+
+    output_path = os.path.join(current_directory, output_filename)
+
+    # Check if the output file already exists
+    if os.path.exists(output_path):
+        suffix = 1
+        base_name, extension = os.path.splitext(output_filename)
+        
+        # Generate a new filename with an ascending suffix
+        while os.path.exists(output_path):
+            new_filename = f"{base_name}({suffix}){extension}"
+            output_path = os.path.join(current_directory, new_filename)
+            suffix += 1
+
+    rowamount = 0
 
     # Prepare column Headers
     header = []
     dates = [start_of_week + datetime.timedelta(days=i) for i in range(7)]
     header.extend(date.strftime('%A\n%d %b') for date in dates)
     data = [header]
+
+    # Set your local timezone
+    local_timezone = pytz.timezone('Europe/Berlin')
 
     # Location Filter
     location_variable = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
@@ -185,33 +189,34 @@ for t in range(2):
     processed_event_uids = set()
 
     for event in events_of_week:
-        event_uid = event.get('UID')
+        event_uid = event.uid
 
         if event_uid not in processed_event_uids:
             filtered_events.append(event)
             processed_event_uids.add(event_uid)
         else:
             existing_event_index = next(
-                (index for index, e in enumerate(filtered_events) if e.get('UID') == event_uid), None
+                (index for index, e in enumerate(filtered_events) if e.uid == event_uid), None
             )
 
             if existing_event_index is not None:
                 existing_event = filtered_events[existing_event_index]
 
-                if event.decoded('LAST-MODIFIED') > existing_event.decoded('LAST-MODIFIED'):
+                if event.last_modified > existing_event.last_modified:
                     filtered_events[existing_event_index] = event
 
     events_of_week = filtered_events
 
     # Group events by date
     for event in events_of_week:
-        event_start = event.decoded('DTSTART')
+        event_start = event.start_time
         if isinstance(event_start, datetime.datetime):
             event_start = event_start.date()
+        
         #Filter events if needed
-        if event.decoded('SUMMARY') != bytes('', 'utf-8'): 
-            print(event.decoded('SUMMARY'))
-            print(type(event.decoded('SUMMARY')))
+        if event.title != '': 
+            print(event.title)
+            print(type(event.title))
             events_by_date[event_start].append(event)
 
     events_exist = True
@@ -235,12 +240,12 @@ for t in range(2):
         events = events_by_date[date]
         k = 1
 
-        events = sorted(events, key=lambda e: e.decoded('DTSTART').astimezone(local_timezone))
+        events = sorted(events, key=lambda e: e.start_time.astimezone(local_timezone))
         sorted_events = []
         for (index, ev) in enumerate(events):
             if ev in sorted_events:
                 continue
-            if index != len(events) - 1 and ev.decoded('DTSTART').astimezone(local_timezone) == events[index+1].decoded('DTSTART').astimezone(local_timezone) and ev.get("SUMMARY") > events[index + 1].get("SUMMARY"):
+            if index != len(events) - 1 and ev.start_time.astimezone(local_timezone) == events[index+1].start_time.astimezone(local_timezone) and ev.title > events[index + 1].title:
                 sorted_events.append(events[index + 1])
                 sorted_events.append(ev)
             else:
@@ -250,16 +255,10 @@ for t in range(2):
         # todo make deterministic by lexicographic comparison
         for event in sorted_events:
             # Format event information
-            event_title = event.get('SUMMARY')
-            event_time = f"{event.decoded('DTSTART').astimezone(local_timezone).strftime('%H:%M')} - {event.decoded('DTEND').astimezone(local_timezone).strftime('%H:%M')}"
-            event_location = "<br/>" + event.get('LOCATION', '') if event.get('LOCATION', '') != location_variable else ''
-            event_description = re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', ''))
-            if "----" in event_description:
-                event_description = event_description.split("----")[t]
-            elif "_______________" in event_description:
-                event_description = event_description.split("_______________")[t]
-            elif "______________" in event_description:
-                event_description = event_description.split("______________")[t]
+            event_title = event.title
+            event_time = f"{event.start_time.astimezone(local_timezone).strftime('%H:%M')} - {event.end_time.astimezone(local_timezone).strftime('%H:%M')}"
+            event_location = "<br/>" + event.location if event.location != location_variable else ''
+            event_description = event.descriptions[t]
 
 
             styles = getSampleStyleSheet()
@@ -270,7 +269,7 @@ for t in range(2):
             cell_contents = f"<b>{event_title}</b><br/>{event_time}<i>{event_location}</i><br/>{event_description}"
             cell_content = Paragraph(cell_contents, cell_style)
 
-            event_start = event.decoded('DTSTART')
+            event_start = event.start_time
             if isinstance(event_start, datetime.datetime):
                 event_start = event_start.date()
 
