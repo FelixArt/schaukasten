@@ -19,12 +19,20 @@ jobs:
           export LC_ALL=C.UTF-8
           export LANG=C.UTF-8
       - name: Run script
-        run: | 
+        run: |
           python main.py
-          if [ -f event_overview* ];
+          if [ -f event_overview*_de.pdf ];
           then
-            echo -e "\033[0;32mFiles exist. Pipeline successful\033[0m"
+            echo -e "\033[0;32mGerman version exist.\033[0m"
           else
-            echo -e "\033[0;31mFiles do not exist. Pipeline failed\033[0m"
+            echo -e "\033[0;31mGerman version does not exist.\033[0m"
             exit 1
           fi
+          if [ -f event_overview*_en.pdf ];
+          then
+            echo -e "\033[0;32mEnglish version exist.\033[0m"
+          else
+            echo -e "\033[0;31mEnglish version does not exist.\033[0m"
+            exit 1
+          fi
+          echo -e "\033[0;32mPipeline successful.\033[0m"
