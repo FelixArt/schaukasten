@@ -16,6 +16,7 @@ jobs:
           python-version: ${{ matrix.python_version }}
       - name: Run script + check files
         run: |
+          export LC_ALL=C
           python3 main.py
           if [ -f event_overview* ];
           then
