@@ -18,6 +18,7 @@ from colorhash import ColorHash
 class Event:
     def __init__(self, event, start_time=None, end_time=None):
         self.title = event.decoded('SUMMARY').decode('utf8')
+        # todo this does result in a single-elemented list (resulting in an indexoutofboundsexception @263)
         self.descriptions = re.split("([-_])\\1{4}\\1*", re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', '')))
         del self.descriptions[1::2]
         self.start_time = start_time or event.decoded('DTSTART')
@@ -145,7 +146,7 @@ current_date = datetime.datetime.now().date()
 start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
 end_of_week = start_of_week + datetime.timedelta(days=6)
 
-for t in range(1):
+for t in range(2):
     # Define the output directory and filename
     if t == 0:
         try:
