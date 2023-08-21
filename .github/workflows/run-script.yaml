@@ -14,14 +14,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python_version }}
-      - name: Run script + check files
+      - name: Run script
+        run: python main.py
+      - name: Check file creation
         run: |
-          locale -a
-          export LC_ALL=C
-          sudo apt-get update && sudo apt-get -y upgrade && sudo apt-get install -y apt-get install language-pack-de-base
-          sudo dpkg-reconfigure locales
-          python3 main.py
-          if [ -f event_overview* ];
+          if [[ -e event_overview* ]];
           then
             echo -e "\033[0;32mFiles exist. Pipeline successful\033[0m"
           else
