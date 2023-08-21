@@ -58,10 +58,10 @@ for t in range(2):
 
     # Define the output directory and filename
     if t == 0:
-        locale.setlocale(locale.LC_TIME, 'de_DE')
+        locale.setlocale(locale.LC_TIME, 'de_DE.utf8')
         output_filename = f'event_overview_{current_week}_de.pdf'
     else:
-        locale.setlocale(locale.LC_TIME, 'en_US')
+        locale.setlocale(locale.LC_TIME, 'en_US.utf8')
         output_filename = f'event_overview_{current_week}_en.pdf'
 
     output_path = os.path.join(current_directory, output_filename)
