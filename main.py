@@ -148,10 +148,16 @@ end_of_week = start_of_week + datetime.timedelta(days=6)
 for t in range(2):
     # Define the output directory and filename
     if t == 0:
-        locale.setlocale(locale.LC_TIME, 'de_DE')
+        try:
+            locale.setlocale(locale.LC_TIME, 'de_DE')
+        except locale.Error:
+            print("Unsupported locale setting, using default locale.")
         output_filename = f'event_overview_{current_week}_de.pdf'
     else:
-        locale.setlocale(locale.LC_TIME, 'en_US')
+        try:
+            locale.setlocale(locale.LC_TIME, 'en_US')
+        except locale.Error:
+            print("Unsupported locale setting, using default locale.")
         output_filename = f'event_overview_{current_week}_en.pdf'
 
     output_path = os.path.join(current_directory, output_filename)
