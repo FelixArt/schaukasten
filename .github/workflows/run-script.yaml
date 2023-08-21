@@ -16,7 +16,9 @@ jobs:
           python-version: ${{ matrix.python_version }}
       - name: Run script + check files
         run: |
-          export LC_ALL=C
+          export LC_ALL="en_US.UTF-8"
+          export LC_CTYPE="en_US.UTF-8"
+          sudo dpkg-reconfigure locales
           python3 main.py
           if [ -f event_overview* ];
           then
