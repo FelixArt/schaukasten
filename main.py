@@ -145,7 +145,7 @@ current_date = datetime.datetime.now().date()
 start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
 end_of_week = start_of_week + datetime.timedelta(days=6)
 
-for t in range(2):
+for t in range(1):
     # Define the output directory and filename
     if t == 0:
         try:
@@ -220,9 +220,7 @@ for t in range(2):
             event_start = event_start.date()
         
         #Filter events if needed
-        if event.title != '': 
-            print(event.title)
-            print(type(event.title))
+        if event.title != '':
             events_by_date[event_start].append(event)
 
     events_exist = True
@@ -234,7 +232,6 @@ for t in range(2):
     rowamount = maxevents
     if maxevents < 1:
         events_exist = False
-
 
     columnwidth = 110
 
@@ -256,16 +253,13 @@ for t in range(2):
                 sorted_events.append(ev)
             else:
                 sorted_events.append(ev)
-            
 
-        # todo make deterministic by lexicographic comparison
         for event in sorted_events:
             # Format event information
             event_title = event.title
             event_time = f"{event.start_time.astimezone(local_timezone).strftime('%H:%M')} - {event.end_time.astimezone(local_timezone).strftime('%H:%M')}"
             event_location = "<br/>" + event.location if event.location != location_variable else ''
             event_description = event.descriptions[t]
-
 
             styles = getSampleStyleSheet()
             cell_style = styles["BodyText"]
@@ -339,7 +333,6 @@ for t in range(2):
             
 
 
-    #print(table_style)
     elements = []
 
     # Add title
