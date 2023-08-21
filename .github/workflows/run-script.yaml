@@ -19,9 +19,8 @@ jobs:
           export LC_ALL=C.UTF-8
           export LANG=C.UTF-8
       - name: Run script
-        run: python main.py
-      - name: Check file creation
-        run: |
+        run: | 
+          python main.py
           if [ -f event_overview* ];
           then
             echo -e "\033[0;32mFiles exist. Pipeline successful\033[0m"
