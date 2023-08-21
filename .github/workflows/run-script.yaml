@@ -18,7 +18,7 @@ jobs:
         run: |
           locale -a
           export LC_ALL=C
-          apt-get update && apt-get -y upgrade && apt-get install -y apt-get install language-pack-de-base
+          sudo apt-get update && sudo apt-get -y upgrade && sudo apt-get install -y apt-get install language-pack-de-base
           sudo dpkg-reconfigure locales
           python3 main.py
           if [ -f event_overview* ];
