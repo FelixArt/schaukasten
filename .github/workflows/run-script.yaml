@@ -1,0 +1,27 @@
+name: Run python script + test
+description: Runs the main-script and checks whether an output file was created
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Use three latest python versions
+        python_version: ["3.9", "3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up python with version '${{ matrix.python_version }}'
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python_version }}
+      - name: Run script + check files
+        run: |
+          python3 main.py
+          if [ -f event_overview* ];
+          then
+            echo -e "\033[0;32mFiles exist. Pipeline successful\033[0m"
+          else
+            echo -e "\033[0;31mFiles do not exist. Pipeline failed\033[0m"
+            exit 1
+          fi

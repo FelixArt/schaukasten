@@ -6,9 +6,11 @@ def library_installed(library_name):
     spec = importlib.util.find_spec(library_name)
     return spec is not None
 
+
 # Install a library using pip
 def install_library(library_name):
     subprocess.check_call(['pip', 'install', library_name])
+
 
 # List of required libraries
 required_libraries = ["os", "re", "datetime", "requests", "locale", "icalendar",
@@ -42,9 +44,8 @@ from reportlab.lib.units import cm, mm
 from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
 
-
 # Output directory and name
-    
+
 current_directory = os.getcwd()
 current_week = datetime.datetime.now().strftime('%Y-%W')
 
@@ -53,9 +54,6 @@ tmp_colors = {}
 
 for t in range(2):
 
-
-
-    
     # Define the output directory and filename
     if t == 0:
         locale.setlocale(locale.LC_TIME, 'de_DE')
@@ -63,25 +61,19 @@ for t in range(2):
     else:
         locale.setlocale(locale.LC_TIME, 'en_US')
         output_filename = f'event_overview_{current_week}_en.pdf'
-    
-    
 
     output_path = os.path.join(current_directory, output_filename)
-    
-    
-
 
     # Check if the output file already exists
     if os.path.exists(output_path):
         suffix = 1
         base_name, extension = os.path.splitext(output_filename)
-        
+
         # Generate a new filename with an ascending suffix
         while os.path.exists(output_path):
             new_filename = f"{base_name}({suffix}){extension}"
             output_path = os.path.join(current_directory, new_filename)
             suffix += 1
-
 
     rowamount = 0
 
@@ -134,10 +126,9 @@ for t in range(2):
                 # Generate the recurring dates within the specified week
                 recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
 
-
                 for date in recurring_dates:
                     new_event = event.copy()
-                    
+
                     event_start_time = event.decoded('DTSTART')
                     if isinstance(event_start_time, datetime.datetime):
                         event_start_time = event_start_time.time()
@@ -164,7 +155,6 @@ for t in range(2):
                     recurring_events.append(new_event)
 
                 events_of_week.extend(recurring_events)
-
 
     # Prepare column Headers
     header = []
@@ -206,8 +196,8 @@ for t in range(2):
         event_start = event.decoded('DTSTART')
         if isinstance(event_start, datetime.datetime):
             event_start = event_start.date()
-        #Filter events if needed
-        if event.decoded('SUMMARY') != bytes('', 'utf-8'): 
+        # Filter events if needed
+        if event.decoded('SUMMARY') != bytes('', 'utf-8'):
             print(event.decoded('SUMMARY'))
             print(type(event.decoded('SUMMARY')))
             events_by_date[event_start].append(event)
@@ -221,7 +211,6 @@ for t in range(2):
     rowamount = maxevents
     if maxevents < 1:
         events_exist = False
-
 
     columnwidth = 110
 
@@ -238,19 +227,20 @@ for t in range(2):
         for (index, ev) in enumerate(events):
             if ev in sorted_events:
                 continue
-            if index != len(events) - 1 and ev.decoded('DTSTART').astimezone(local_timezone) == events[index+1].decoded('DTSTART').astimezone(local_timezone) and ev.get("SUMMARY") > events[index + 1].get("SUMMARY"):
+            if index != len(events) - 1 and ev.decoded('DTSTART').astimezone(local_timezone) == events[
+                index + 1].decoded('DTSTART').astimezone(local_timezone) and ev.get("SUMMARY") > events[index + 1].get(
+                    "SUMMARY"):
                 sorted_events.append(events[index + 1])
                 sorted_events.append(ev)
             else:
                 sorted_events.append(ev)
-            
 
-        # todo make deterministic by lexicographic comparison
         for event in sorted_events:
             # Format event information
             event_title = event.get('SUMMARY')
             event_time = f"{event.decoded('DTSTART').astimezone(local_timezone).strftime('%H:%M')} - {event.decoded('DTEND').astimezone(local_timezone).strftime('%H:%M')}"
-            event_location = "<br/>" + event.get('LOCATION', '') if event.get('LOCATION', '') != location_variable else ''
+            event_location = "<br/>" + event.get('LOCATION', '') if event.get('LOCATION',
+                                                                              '') != location_variable else ''
             event_description = re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', ''))
             if t == 0:
                 if "----" in event_description:
@@ -259,8 +249,6 @@ for t in range(2):
                     event_description = event_description.split("_______________")[0]
                 elif "______________" in event_description:
                     event_description = event_description.split("______________")[0]
-                
-
             else:
                 if "----" in event_description:
                     event_description = event_description.split("----")[1]
@@ -268,7 +256,6 @@ for t in range(2):
                     event_description = event_description.split("_______________")[1]
                 elif "______________" in event_description:
                     event_description = event_description.split("______________")[1]
-            
 
             styles = getSampleStyleSheet()
             cell_style = styles["BodyText"]
@@ -285,8 +272,6 @@ for t in range(2):
             data[k][(event_start - start_of_week).days] = cell_content
 
             k = k + 1
-
-
 
     # Create table style
     table_style = [
@@ -323,54 +308,51 @@ for t in range(2):
         'Anime Abend Serie': colors.HexColor("#BDF370"),
         'Bibliothekstreffen': colors.HexColor("#99FFFC"),
 
-
         # Add more event names and corresponding colors as key-value pairs
     }
-
-    
 
     spanned_cell_color = None  # Initialize spanned_cell_color variable
     # Add merged cell coordinates to table style
     for row_index, row in enumerate(data):
         for col_index, cell in enumerate(row):
             # Extract the actual cell content from the KeepInFrame object
-            #cell_content = cell._content[0] if isinstance(cell, KeepInFrame) else cell
+            # cell_content = cell._content[0] if isinstance(cell, KeepInFrame) else cell
             cell_content = cell
             # Extract the first line (bolded) from the cell contents
             cell_content_lines = re.findall(r"<b>(.*?)</b>", str(cell_content))
             event_name = cell_content_lines[0].strip() if cell_content_lines else ''
-            
-            if event_name not in event_color_mapping and event_name not in tmp_colors:
-                tmp_colors[event_name] = (random.uniform(0.7, 1), random.uniform(0.7, 1), random.uniform(0.7, 1)) 
 
+            if event_name not in event_color_mapping and event_name not in tmp_colors:
+                tmp_colors[event_name] = (random.uniform(0.7, 1), random.uniform(0.7, 1), random.uniform(0.7, 1))
 
             rowheights = 470 / rowamount
-            color_to_use = event_color_mapping.get(event_name) if event_color_mapping.get(event_name) else tmp_colors.get(event_name)
+            color_to_use = event_color_mapping.get(event_name) if event_color_mapping.get(
+                event_name) else tmp_colors.get(event_name)
             if row_index > 0 and row_index < rowamount:
                 if data[row_index][col_index] != '':
-                        table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
+                    table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
                 if data[row_index + 1][col_index] == '':
                     if row_index + 2 <= rowamount and data[row_index + 2][col_index] == '':
                         table_style.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
-                        rowheights = 3*rowheights
+                        rowheights = 3 * rowheights
                         if data[row_index][col_index] != '':
-                            table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index+2), color_to_use))
+                            table_style.append(
+                                ('BACKGROUND', (col_index, row_index), (col_index, row_index + 2), color_to_use))
                     else:
                         table_style.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
-                        rowheights = 2*rowheights
+                        rowheights = 2 * rowheights
                         if data[row_index][col_index] != '':
-                            table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index+1), color_to_use))
+                            table_style.append(
+                                ('BACKGROUND', (col_index, row_index), (col_index, row_index + 1), color_to_use))
 
             elif row_index == rowamount and data[row_index][col_index] != '':
-                table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))   
-            
+                table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
+
             if type(cell_content) == Paragraph:
                 cell_content = KeepInFrame(columnwidth, rowheights, [cell_content])
                 data[row_index][col_index] = cell_content
-            
 
-
-    #print(table_style)
+    # print(table_style)
     elements = []
 
     # Add title
@@ -380,10 +362,8 @@ for t in range(2):
     else:
         title_text = f"<i>Events of the week from {start_of_week.strftime('%d %b %Y')} to {end_of_week.strftime('%d %b %Y')}</i>"
 
-    
     title = Paragraph(title_text, title_style)
     elements.append(title)
-
 
     # Create table
     if events_exist:
@@ -400,7 +380,8 @@ for t in range(2):
         elements.append(msg)
 
     # Create the PDF file
-    doc = SimpleDocTemplate(output_path, pagesize=landscape(A4), leftMargin=(6.35 * mm), rightMargin=(6.35 * mm), topMargin=(6.35 * mm),
+    doc = SimpleDocTemplate(output_path, pagesize=landscape(A4), leftMargin=(6.35 * mm), rightMargin=(6.35 * mm),
+                            topMargin=(6.35 * mm),
                             bottomMargin=(6.35 * mm))
 
     # Build the document with the elements
