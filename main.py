@@ -9,6 +9,8 @@ def library_installed(library_name):
 
 # Install a library using pip
 def install_library(library_name):
+    if library_name == "dateutil":
+        library_name = "python-dateutil"
     subprocess.check_call(['pip', 'install', library_name])
 
 
