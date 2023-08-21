@@ -58,10 +58,16 @@ for t in range(2):
 
     # Define the output directory and filename
     if t == 0:
-        locale.setlocale(locale.LC_TIME, 'de_DE.utf8')
+        try:
+            locale.setlocale(locale.LC_TIME, 'de_DE.utf8')
+        except locale.Error:
+            print("Unsupported locale setting, using default locale.")
         output_filename = f'event_overview_{current_week}_de.pdf'
     else:
-        locale.setlocale(locale.LC_TIME, 'en_US.utf8')
+        try:
+            locale.setlocale(locale.LC_TIME, 'en_US.utf8')
+        except locale.Error:
+            print("Unsupported locale setting, using default locale.")
         output_filename = f'event_overview_{current_week}_en.pdf'
 
     output_path = os.path.join(current_directory, output_filename)
@@ -200,8 +206,6 @@ for t in range(2):
             event_start = event_start.date()
         # Filter events if needed
         if event.decoded('SUMMARY') != bytes('', 'utf-8'):
-            print(event.decoded('SUMMARY'))
-            print(type(event.decoded('SUMMARY')))
             events_by_date[event_start].append(event)
 
     events_exist = True
@@ -354,7 +358,6 @@ for t in range(2):
                 cell_content = KeepInFrame(columnwidth, rowheights, [cell_content])
                 data[row_index][col_index] = cell_content
 
-    # print(table_style)
     elements = []
 
     # Add title
