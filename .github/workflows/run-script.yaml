@@ -1,5 +1,4 @@
 name: Run python script + test
-description: Runs the main-script and checks whether an output file was created
 on: push
 
 jobs:
