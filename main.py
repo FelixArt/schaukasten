@@ -206,8 +206,6 @@ for t in range(2):
             event_start = event_start.date()
         # Filter events if needed
         if event.decoded('SUMMARY') != bytes('', 'utf-8'):
-            print(event.decoded('SUMMARY'))
-            print(type(event.decoded('SUMMARY')))
             events_by_date[event_start].append(event)
 
     events_exist = True
@@ -360,7 +358,6 @@ for t in range(2):
                 cell_content = KeepInFrame(columnwidth, rowheights, [cell_content])
                 data[row_index][col_index] = cell_content
 
-    # print(table_style)
     elements = []
 
     # Add title

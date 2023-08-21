@@ -22,7 +22,7 @@ jobs:
         run: python main.py
       - name: Check file creation
         run: |
-          if [[ -e event_overview* ]];
+          if [ -f event_overview* ];
           then
             echo -e "\033[0;32mFiles exist. Pipeline successful\033[0m"
           else
