@@ -262,7 +262,9 @@ for t in range(2):
                     event_description = event_description.split("_______________")[1]
                 elif "______________" in event_description:
                     event_description = event_description.split("______________")[1]
-
+                event_description = event_description.replace("\x0A\xA0\x0A\xA0\x0A", " ")
+                event_description = event_description.replace("\xA0\xA0", " ")
+                
             styles = getSampleStyleSheet()
             cell_style = styles["BodyText"]
             cell_style.fontSize = 12
