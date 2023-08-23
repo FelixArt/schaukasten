@@ -169,6 +169,7 @@ for t in range(2):
     dates = [start_of_week + datetime.timedelta(days=i) for i in range(7)]
     header.extend(date.strftime('%A\n%d %b') for date in dates)
     data = [header]
+    insta_data = []
 
     # Location Filter
     location_variable = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
@@ -219,6 +220,7 @@ for t in range(2):
         events_exist = False
 
     columnwidth = 110
+    
 
     # Create columns for the table
     for j in range(rowamount):
@@ -318,6 +320,8 @@ for t in range(2):
 
         # Add more event names and corresponding colors as key-value pairs
     }
+
+
 
     spanned_cell_color = None  # Initialize spanned_cell_color variable
     # Add merged cell coordinates to table style
