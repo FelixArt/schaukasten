@@ -16,7 +16,7 @@ def install_library(library_name):
 
 # List of required libraries
 required_libraries = ["os", "re", "datetime", "requests", "locale", "icalendar",
-                      "reportlab", "dateutil", "random", "pytz", "tkinter", "tkcalendar"]
+                      "reportlab", "dateutil", "random", "pytz", "tkinter", "tkcalendar", "tkpdfviewer""]
 
 # Check and install missing libraries
 missing_libraries = []
@@ -40,7 +40,8 @@ import pytz
 import tkinter as tk
 from icalendar import Calendar
 from tkinter import filedialog
-from tkcalendar import Calendar
+from tkcalendar import Calendar as tkCalendar
+from tkpdfviewer import tkPDFViewer as pdf
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -66,19 +67,15 @@ def open_directory_picker():
     if current_directory:
         selected_directory_label.config(text="Selected Directory: " + current_directory)
 
-def submit_ical_url():
-    ical_url = ical_url_entry.get()
-    if ical_url:
-        ical_url_label.config(text="iCal URL: " + ical_url)
-
 def get_selected_date(event):
     selected_date_str = cal.get_date()
-    print(selected_date_str)
     selected_date = datetime.datetime.strptime(selected_date_str, '%m/%d/%y').date()
     current_date = selected_date
     date_label.config(text="Date: " + current_date.strftime('%d.%m.%Y'))
 
-def generate_overview():
+def generate_overview(languages = ["de", "en", "both"]):
+    ical_url = ical_url_entry.get()
+
     for t in range(2):
 
         # Define the output directory and filename
@@ -418,7 +415,6 @@ def generate_overview():
         print(f'Event overview table generated: {output_path}')
 
 
-
 # Create a tkinter window
 root = tk.Tk()
 root.title("Overview Generator")
@@ -458,13 +454,21 @@ date_label = tk.Label(date_picker_frame, text="Date: " + current_date.strftime('
 date_label.pack(side=tk.LEFT, padx=10)
 
 #Create a calendar to pick the date
-cal = Calendar(date_picker_frame, selectmode="day", year=today.year, month=today.month, day=today.day)
+cal = tkCalendar(date_picker_frame, selectmode="day", year=today.year, month=today.month, day=today.day)
 cal.pack(side=tk.LEFT, padx=10)
 cal.bind("<<CalendarSelected>>", get_selected_date)
 
+# Create a Frame to hold the generate button
+gen_button_frame = tk.Frame(root)
+gen_button_frame.pack(padx=10, pady=10)
+
 # Create a generate button that executes the generate_overview function
-generate_button = tk.Button(root, text="Generate Overview", command=generate_overview)
-generate_button.pack(padx=10, pady=10)
+generate_button = tk.Button(gen_button_frame, text="Generate Overview", command=generate_overview)
+generate_button.pack(side=tk.RIGHT, padx=10)
+
+# Create a Preview button that executes the generate_overview function
+preview_button = tk.Button(gen_button_frame, text="Preview", command=generate_overview)
+preview_button.pack(side=tk.LEFT, padx=10)
 
 # Start the tkinter main loop
 root.mainloop()
