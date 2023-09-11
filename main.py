@@ -1,12 +1,14 @@
 import os
 import re
 import datetime
+
 import requests as rq
 import locale
 import random
 import pytz
 import json
 from icalendar import Calendar
+from icalendar.cal import Component
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -14,7 +16,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm, mm
 from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Type, TypeVar, Optional, Union, List, Any
+
+# TypeVar to be used in type hints
+_T = TypeVar("_T")
 
 # Delimiters that separate different translations in the ical description
 LANG_DELIMITER_1 = "----"
@@ -38,35 +43,125 @@ TABLE_STYLE = [
     ('SPAN', (0, 1), (0, 2))
 ]
 
+# The default event location
+DEFAULT_LOCATION = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
+
+# Message for a week without events
+NO_EVENTS_MSG = "Diese Woche keine Veranstaltungen<br/><i>No events this week</i>"
+
+# Timezone to be considered
+LOCAL_TIMEZONE = pytz.timezone('Europe/Berlin')
+
+# Font size of the cells
+CELL_FONT_SIZE = 12
+
 
 class LanguageField:
     """
     Represents an entry that has a corresponding translation
     """
 
-    def __init__(self, ger_val: str, en_val: str):
+    def __init__(self, ger_val: str, en_val: Optional[str] = None):
         """
         Creates a new LanguageField.
         :param ger_val: The german text.
         :param en_val: The english text.
         """
         self.ger_val = ger_val
-        self.en_val = en_val
+        # Set the eng_val to the ger_val if there is no corresponding translation
+        self.en_val = en_val if en_val else ger_val
+
+    @classmethod
+    def from_description(cls, description: str):
+        description = re.sub(r"<(?!br/).*?>", '', description)
+        return cls(
+            *(description.split(LANG_DELIMITER_1) if LANG_DELIMITER_1 in description else
+              description.split(LANG_DELIMITER_2) if LANG_DELIMITER_2 in description else
+              description.split(LANG_DELIMITER_3))
+        )
+
+    @classmethod
+    def from_translation(cls, ger_val: str, translation_dict: Dict[str, str]):
+        return cls(ger_val, translation_dict[ger_val] if ger_val in translation_dict else None)
 
 
 class CalendarEvent:
+    # todo add necessary fields
+    #   location
     """
     Models an event in the calendar.
     """
 
-    def __int__(self, event_name: LanguageField, event_start, event_end, event_description: LanguageField):
-        self.event_name = event_name
-        self.event_start = event_start
-        self.event_end = event_end
-        self.event_description = event_description
+    def __init__(self, title: LanguageField,
+                 dt_start,
+                 dt_end,
+                 description: LanguageField,
+                 name: str,
+                 uid: Any,  # TODO what is this
+                 location: str,
+                 last_modified: str,
+                 rrule: Optional[Any] = None):
+        self.title = title
+        self.dt_start = dt_start
+        self.dt_end = dt_end
+        self.description = description
+        self.name = name
+        self.uid = uid
+        self.location = location
+        self.last_modified = last_modified
+        self.rrule = rrule
+
+    @classmethod
+    def from_event(cls, event: Component, translation_dict: Dict[str, str]):
+        """
+        Creates a CalendarEvent from an existing event.
+        :param event: The event
+        :param translation_dict: The translation dictionary
+        :return: A new CalendarEvent instance.
+        """
+        dt_start = event.decoded("DTSTART").date() \
+            if isinstance(event.decoded("DTSTART"), datetime.datetime) else \
+            event.decoded("DTSTART")
+
+        dt_end = event.decoded("DTEND").date() \
+            if isinstance(event.decoded("DTEND"), datetime.datetime) else \
+            event.decoded("DTEND")
+
+        return cls(
+            LanguageField.from_translation(event.get("SUMMARY"), translation_dict),
+            dt_start,
+            dt_end,
+            LanguageField.from_description(event.get("DESCRIPTION")),
+            event.get("NAME"),
+            event.get("UID"),
+            event.get("LOCATION"),
+            event.decoded("LASTMODIFIED"),
+            event.get('RRULE').to_ical().decode('utf-8') if event.has_key("RRULE") else None
+        )
+
+    def __lt__(self, other):
+        """
+        Implement the '<' comparison operator.
+        """
+        return self.dt_start > other.dt_start or \
+               (self.dt_start == other.dt_start and self.description < other.description)
+
+    def to_cell(self, lang_ger: bool):
+        event_title = self.title.ger_val if lang_ger else self.description.en_val
+        event_time = f"{self.dt_start.astimezone(LOCAL_TIMEZONE).strftime('%H:%M')} - " \
+                     f"{self.dt_end.astimezone(LOCAL_TIMEZONE).strftime('%H:%M')} "
+        event_location = self.location if self.location != DEFAULT_LOCATION else ''
+        event_description = self.description.ger_val if lang_ger else self.description.en_val
+
+        return f"""
+        <b>{event_title}</b>
+        {event_time}
+        <i>{event_location}</i>
+        {event_description}
+        """
 
 
-def load_json(path: str, modification_fun: Callable[[str], Any] = None) -> Dict[str, Any]:
+def load_json(path: str, modification_fun: Optional[Callable[[str], Type[_T]]] = None) -> Dict[str, Union[str, _T]]:
     """
     Loads a given json file and modifies its values.
     :param path: The relative path to the json file.
@@ -92,19 +187,48 @@ def fetch_calendar(ical_url: str) -> Calendar:
     return Calendar.from_ical(response.text)
 
 
-def main():
-    location_variable = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
+def group_events_by_dates(events: List[CalendarEvent]):
+    pass
 
+
+def filter_events(events: List[CalendarEvent]):
+    """
+    Filter duplicates.
+    :param events: A list of events.
+    :return: A list of events without duplicates.
+    """
+    filtered_events = []
+    processed_event_uids = set()
+    for event in events:
+        if event.uid not in processed_event_uids:
+            filtered_events.append(event)
+            processed_event_uids.add(event.uid)
+        else:
+            existing_event_index = next(
+                (index for index, e in enumerate(filtered_events) if e.uid == event.uid), None
+            )
+
+            if existing_event_index is not None:
+                existing_event = filtered_events[existing_event_index]
+
+                if event.last_modified > existing_event.last_modified:
+                    filtered_events[existing_event_index] = event
+    return filtered_events
+
+
+def main():
     # Output directory and name
     current_directory = os.getcwd()
     current_week = datetime.datetime.now().strftime('%Y-%W')
 
-    # List of colors that are not set
-    tmp_colors = {}
+    # Parse colors that are already set
     event_color_mapping = load_json("data/colors.json", lambda x: colors.HexColor(x))
 
-    # Set the local timezone
-    local_timezone = pytz.timezone('Europe/Berlin')
+    # Parse translations
+    translation_mapping = load_json("data/translations.json")
+
+    # List of colors that are not set
+    tmp_colors = {}
 
     calendar = fetch_calendar(
         'https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics'
@@ -125,6 +249,7 @@ def main():
     #       1. Parsing
     #       2. Generating
     #   Dont do this 👇👇
+
     for t in range(2):
         # Define the output directory and filename
         try:
@@ -144,26 +269,20 @@ def main():
 
         # Iterate over the events in the calendar
         for event in calendar.walk():
-            if event.name == 'VEVENT':
-                # Regular event
-                event_start = event.decoded('DTSTART')
-                if isinstance(event_start, datetime.datetime):
-                    event_start = event_start.date()
-                event_end = event.decoded('DTEND')
-                if isinstance(event_end, datetime.datetime):
-                    event_end = event_end.date()
 
-                if start_of_week <= event_start <= end_of_week or start_of_week <= event_end <= end_of_week:
-                    events_of_week.append(event)
+            c_event = CalendarEvent.from_event(event)
+            # Regular event
+            if c_event.name == 'VEVENT':
+
+                if start_of_week <= c_event.dt_start <= end_of_week:
+                    events_of_week.append(c_event)
 
                 # Recurring event
-                if event.get('RRULE'):
-                    rrule = event['RRULE'].to_ical().decode('utf-8')
-
+                # TODO what does this do
+                if c_event.rrule:
                     recurring_events = []
-
                     # Create the recurrence rule object from the RRULE string
-                    rule = rrulestr(rrule, dtstart=event_start, ignoretz=True)
+                    rule = rrulestr(c_event.rrule, dtstart=c_event.dt_start, ignoretz=True)
 
                     # Convert start_of_week and end_of_week to datetime.datetime objects
                     start_of_week_datetime = datetime.datetime.combine(start_of_week, datetime.datetime.min.time())
@@ -173,23 +292,30 @@ def main():
                     recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
 
                     for date in recurring_dates:
-                        new_event = event.copy()
+                        event_start_time = c_event.dt_start.time() \
+                            if isinstance(c_event.dt_start, datetime.datetime) else \
+                            c_event.dt_start
 
-                        event_start_time = event.decoded('DTSTART')
-                        if isinstance(event_start_time, datetime.datetime):
-                            event_start_time = event_start_time.time()
-                        event_end_time = event.decoded('DTEND')
-                        if isinstance(event_end_time, datetime.datetime):
-                            event_end_time = event_end_time.time()
-
+                        event_end_time = c_event.dt_end.time() \
+                            if isinstance(c_event.dt_end, datetime.datetime) else \
+                            c_event.dt_end
                         # Calculate the adjusted start and end times based on the original event's duration
                         new_event_start = datetime.datetime.combine(date, event_start_time)
                         new_event_end = datetime.datetime.combine(date, event_end_time)
-
-                        new_event['DTSTART'].dt = new_event_start
-                        new_event['DTEND'].dt = new_event_end
+                        new_event = CalendarEvent(
+                            title=c_event.title,
+                            description=c_event.description,
+                            rrule=c_event.rrule,
+                            name=c_event.name,
+                            dt_start=new_event_start,
+                            dt_end=new_event_end,
+                            uid=c_event.uid,
+                            location=c_event.location,
+                            last_modified=c_event.last_modified
+                        )
 
                         # Convert UNTIL value to UTC if it is timezone-aware
+                        # TODO what does this do
                         if 'RRULE' in new_event and 'UNTIL' in new_event['RRULE']:
                             until_value = new_event['RRULE']['UNTIL']
                             if isinstance(until_value, list):
@@ -198,48 +324,18 @@ def main():
                                 until_value = until_value.astimezone(pytz.UTC)
                                 new_event['RRULE']['UNTIL'] = [until_value]
 
-                        recurring_events.append(new_event)
+                        recurring_events.append(CalendarEvent.from_event(new_event))
 
                     events_of_week.extend(recurring_events)
 
         data = [header]
 
         # Create a dictionary to store events by date
-        events_by_date = {date: [] for date in dates}
+        events_by_date = {date: sorted([event for event in filter_events(events_of_week)
+                                        if event.dt_start == date and event.title])
+                          for date in dates}
 
-        # Filtering duplicate events:
-        filtered_events = []
-        processed_event_uids = set()
-
-        for event in events_of_week:
-            event_uid = event.get('UID')
-
-            if event_uid not in processed_event_uids:
-                filtered_events.append(event)
-                processed_event_uids.add(event_uid)
-            else:
-                existing_event_index = next(
-                    (index for index, e in enumerate(filtered_events) if e.get('UID') == event_uid), None
-                )
-
-                if existing_event_index is not None:
-                    existing_event = filtered_events[existing_event_index]
-
-                    if event.decoded('LAST-MODIFIED') > existing_event.decoded('LAST-MODIFIED'):
-                        filtered_events[existing_event_index] = event
-
-        events_of_week = filtered_events
-
-        # Group events by date
-        for event in events_of_week:
-            event_start = event.decoded('DTSTART')
-            if isinstance(event_start, datetime.datetime):
-                event_start = event_start.date()
-            # Filter events if needed
-            if event.decoded('SUMMARY') != bytes('', 'utf-8'):
-                events_by_date[event_start].append(event)
-
-        # Find highest amount of events
+        # Find the highest amount of events
         row_amount = max([len(events_by_date[date]) for date in dates])
 
         # Create columns for the table
@@ -250,54 +346,21 @@ def main():
             events = events_by_date[date]
             k = 1
 
-            events = sorted(events, key=lambda e: e.decoded('DTSTART').astimezone(local_timezone))
-            sorted_events = []
-            for (index, ev) in enumerate(events):
-                if ev in sorted_events:
-                    continue
-                if index != len(events) - 1 and ev.decoded('DTSTART').astimezone(local_timezone) == events[
-                    index + 1].decoded('DTSTART').astimezone(local_timezone) and ev.get("SUMMARY") > events[
-                    index + 1].get(
-                    "SUMMARY"):
-                    sorted_events.append(events[index + 1])
-                    sorted_events.append(ev)
-                else:
-                    sorted_events.append(ev)
-
-            for event in sorted_events:
+            for event in sorted(events):
                 # Format event information
-                event_title = event.get('SUMMARY')
-                event_time = f"{event.decoded('DTSTART').astimezone(local_timezone).strftime('%H:%M')} - {event.decoded('DTEND').astimezone(local_timezone).strftime('%H:%M')}"
-                event_location = "<br/>" + event.get('LOCATION', '') if event.get('LOCATION',
-                                                                                  '') != location_variable else ''
-                event_description = re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', ''))
-                event_description = event_description.split(LANG_DELIMITER_1)[t] \
-                    if LANG_DELIMITER_1 in event_description \
-                    else event_description.split(LANG_DELIMITER_2)[t] \
-                    if LANG_DELIMITER_2 in event_description \
-                    else event_description.split(LANG_DELIMITER_3)[t]
 
                 styles = getSampleStyleSheet()
                 cell_style = styles["BodyText"]
-                cell_style.fontSize = 12
+                cell_style.fontSize = CELL_FONT_SIZE
+                cell_content = Paragraph(event.to_cell(not t), cell_style)
 
-                # Collect event infos
-                cell_contents = f"<b>{event_title}</b><br/>{event_time}<i>{event_location}</i><br/>{event_description}"
-                cell_content = Paragraph(cell_contents, cell_style)
-
-                event_start = event.decoded('DTSTART')
-                if isinstance(event_start, datetime.datetime):
-                    event_start = event_start.date()
-
-                data[k][(event_start - start_of_week).days] = cell_content
+                data[k][(event.dt_start - start_of_week).days] = cell_content
 
                 k = k + 1
-
         # Add merged cell coordinates to table style
         for row_index, row in enumerate(data):
             for col_index, cell in enumerate(row):
                 # Extract the actual cell content from the KeepInFrame object
-                # cell_content = cell._content[0] if isinstance(cell, KeepInFrame) else cell
                 cell_content = cell
                 # Extract the first line (bolded) from the cell contents
                 cell_content_lines = re.findall(r"<b>(.*?)</b>", str(cell_content))
@@ -309,7 +372,7 @@ def main():
                 rowheights = 470 / row_amount
                 color_to_use = event_color_mapping.get(event_name) if event_color_mapping.get(
                     event_name) else tmp_colors.get(event_name)
-                if row_index > 0 and row_index < row_amount:
+                if 0 < row_index < row_amount:
                     if data[row_index][col_index] != '':
                         TABLE_STYLE.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
                     if data[row_index + 1][col_index] == '':
@@ -355,8 +418,7 @@ def main():
             elements.append(table)
         else:
             msg_style = getSampleStyleSheet()["Heading1"]
-            msg_text = "Diese Woche keine Veranstaltungen<br/><i>No events this week</i>"
-            msg = Paragraph(msg_text, msg_style)
+            msg = Paragraph(NO_EVENTS_MSG, msg_style)
             elements.append(Spacer(1, 2 * cm))
             elements.append(msg)
 
