@@ -347,7 +347,7 @@ def main():
 
         # Create table
         # TODO ??????? 👇👇👇👇👇🤔🤔🤔
-        if row_amount < 1:
+        if row_amount >= 1:
             # Calculate cell heights based on content
             row_heights = [cm * 1.5] + [rowheights] * row_amount
             table = Table(data, colWidths=COLUMN_WIDTH, rowHeights=row_heights)
