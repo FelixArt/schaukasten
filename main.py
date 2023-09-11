@@ -16,7 +16,7 @@ def install_library(library_name):
 
 # List of required libraries
 required_libraries = ["os", "re", "datetime", "requests", "locale", "icalendar",
-                      "reportlab", "dateutil", "random", "pytz", "tkinter", "tkcalendar", "tkpdfviewer""]
+                      "reportlab", "dateutil", "random", "pytz", "tkinter", "tkcalendar", "tkpdfviewer"]
 
 # Check and install missing libraries
 missing_libraries = []
@@ -41,7 +41,7 @@ import tkinter as tk
 from icalendar import Calendar
 from tkinter import filedialog
 from tkcalendar import Calendar as tkCalendar
-from tkpdfviewer import tkPDFViewer as pdf
+from tkPDFViewer import tkPDFViewer as pdf
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -51,32 +51,76 @@ from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
 
 # Get the current working directory and global definitions
-working_directory = os.getcwd()
-current_directory = working_directory
-current_week = datetime.datetime.now().strftime('%Y-%W')
-ical_url = 'https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics'
-today = datetime.datetime.now().date()
-current_date = today
+def init():
+    global working_directory
+    global current_directory
+    global current_week
+    global ical_url
+    global today
+    global current_date
+    global lang
+    global tmp_colors
+    working_directory = os.getcwd()
+    current_directory = working_directory
+    current_week = datetime.datetime.now().strftime('%Y-%W')
+    ical_url = 'https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics'
+    today = datetime.datetime.now().date()
+    current_date = today
+    lang = 3
 
-# List of colors that are not set
-tmp_colors = {}
+    # List of colors that are not set
+    tmp_colors = {}
 
 #Functions
 def open_directory_picker():
+    global current_directory
     current_directory = filedialog.askdirectory(initialdir=working_directory)
     if current_directory:
         selected_directory_label.config(text="Selected Directory: " + current_directory)
 
 def get_selected_date(event):
+    global current_date
+    global current_week
     selected_date_str = cal.get_date()
     selected_date = datetime.datetime.strptime(selected_date_str, '%m/%d/%y').date()
     current_date = selected_date
+    current_week = current_date.strftime('%Y-%W')
     date_label.config(text="Date: " + current_date.strftime('%d.%m.%Y'))
 
-def generate_overview(languages = ["de", "en", "both"]):
-    ical_url = ical_url_entry.get()
+def preview_pdf():
+    generate_preview()
+    pdf_view.pack(padx=10, pady=10)
 
-    for t in range(2):
+def generate_preview():
+    global current_directory
+    global lang
+    lang = 1
+    #create preview directory
+    if not os.path.exists(working_directory + "/preview"):
+        os.makedirs(working_directory + "/preview")
+    current_directory = working_directory + "/preview"
+    generate_overview()
+
+
+def generate_overview():
+    ical_url = ical_url_entry.get()
+    get_selected_date(None)
+
+
+    b=0
+    v=1
+
+    if lang == 1:
+        b=0
+        v=1
+    elif lang == 2:
+        b=1
+        v=2
+    elif lang == 3:
+        b=0
+        v=2
+
+    for t in range(b, v):
 
         # Define the output directory and filename
         if t == 0:
@@ -414,6 +458,7 @@ def generate_overview(languages = ["de", "en", "both"]):
 
         print(f'Event overview table generated: {output_path}')
 
+init()
 
 # Create a tkinter window
 root = tk.Tk()
@@ -467,8 +512,14 @@ generate_button = tk.Button(gen_button_frame, text="Generate Overview", command=
 generate_button.pack(side=tk.RIGHT, padx=10)
 
 # Create a Preview button that executes the generate_overview function
-preview_button = tk.Button(gen_button_frame, text="Preview", command=generate_overview)
+preview_button = tk.Button(gen_button_frame, text="Preview", command=preview_pdf)
 preview_button.pack(side=tk.LEFT, padx=10)
+
+#Add pdf viewer
+#generate_preview()
+pdf_view_obj = pdf.ShowPdf()
+pdf_view = pdf_view_obj.pdf_view(root, pdf_location="C:\\Users\\f8131\\Documents\\schaukasten\\schaukasten\\preview\\event_overview_2023-37_de.pdf", width=100, height=100)
+pdf_view.pack(padx=10, pady=10)
 
 # Start the tkinter main loop
 root.mainloop()
