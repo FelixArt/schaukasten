@@ -74,7 +74,7 @@ def load_json(path: str, modification_fun: Callable[[str], Any] = None) -> Dict[
     :return: A dictionary containing the (modified) data from the json file.
     """
     with open(path, "r") as file:
-        data = json.loads(file)
+        data = json.load(file)
     return data if modification_fun is None \
         else {key: modification_fun(val) for key, val in data.items()}
 
