@@ -16,7 +16,7 @@ def install_library(library_name):
 
 # List of required libraries
 required_libraries = ["os", "re", "datetime", "requests", "locale", "icalendar",
-                      "reportlab", "dateutil", "random", "pytz", "tkinter", "tkcalendar", "tkpdfviewer"]
+                      "reportlab", "dateutil", "random", "pytz", "tkinter", "tkcalendar", "tkpdfviewer", "fitz"]
 
 # Check and install missing libraries
 missing_libraries = []
@@ -37,11 +37,13 @@ import requests
 import locale
 import random
 import pytz
+import fitz
 import tkinter as tk
+from tkinter import ttk
 from icalendar import Calendar
+from PIL import Image, ImageTk
 from tkinter import filedialog
 from tkcalendar import Calendar as tkCalendar
-from tkPDFViewer import tkPDFViewer as pdf
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -60,6 +62,7 @@ def init():
     global current_date
     global lang
     global tmp_colors
+    global doc
     working_directory = os.getcwd()
     current_directory = working_directory
     current_week = datetime.datetime.now().strftime('%Y-%W')
@@ -67,6 +70,7 @@ def init():
     today = datetime.datetime.now().date()
     current_date = today
     lang = 3
+    
 
     # List of colors that are not set
     tmp_colors = {}
@@ -87,20 +91,42 @@ def get_selected_date(event):
     current_week = current_date.strftime('%Y-%W')
     date_label.config(text="Date: " + current_date.strftime('%d.%m.%Y'))
 
-def preview_pdf():
-    generate_preview()
-    pdf_view.pack(padx=10, pady=10)
+
 
 def generate_preview():
     global current_directory
     global lang
-    lang = 1
+    global doc
+    global output_path
+
     #create preview directory
     if not os.path.exists(working_directory + "/preview"):
         os.makedirs(working_directory + "/preview")
     current_directory = working_directory + "/preview"
-    generate_overview()
 
+    #if doc is defined, and doc is open, close it
+    if 'doc' in globals():
+        if doc is not None:
+            doc.close()
+    
+    for file in os.listdir(current_directory):
+        os.remove(os.path.join(current_directory, file))
+
+    lang = 1
+    generate_overview()
+    doc = fitz.open(output_path)
+    page = doc.load_page(0)
+    pix = page.get_pixmap()
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    img = ImageTk.PhotoImage(image=img)
+
+    img_label.configure(image=img)
+    img_label.image = img
+
+def generate_button_func():
+    global lang
+    lang = 3
+    generate_overview()
 
 def generate_overview():
     ical_url = ical_url_entry.get()
@@ -121,7 +147,8 @@ def generate_overview():
         v=2
 
     for t in range(b, v):
-
+        
+        global output_path
         # Define the output directory and filename
         if t == 0:
             try:
@@ -508,18 +535,19 @@ gen_button_frame = tk.Frame(root)
 gen_button_frame.pack(padx=10, pady=10)
 
 # Create a generate button that executes the generate_overview function
-generate_button = tk.Button(gen_button_frame, text="Generate Overview", command=generate_overview)
+generate_button = tk.Button(gen_button_frame, text="Generate Overview", command=generate_button_func)
 generate_button.pack(side=tk.RIGHT, padx=10)
 
 # Create a Preview button that executes the generate_overview function
-preview_button = tk.Button(gen_button_frame, text="Preview", command=preview_pdf)
+preview_button = tk.Button(gen_button_frame, text="Preview", command=generate_preview)
 preview_button.pack(side=tk.LEFT, padx=10)
 
-#Add pdf viewer
-#generate_preview()
-pdf_view_obj = pdf.ShowPdf()
-pdf_view = pdf_view_obj.pdf_view(root, pdf_location="C:\\Users\\f8131\\Documents\\schaukasten\\schaukasten\\preview\\event_overview_2023-37_de.pdf", width=100, height=100)
-pdf_view.pack(padx=10, pady=10)
+#pdf viewer
+img_label = ttk.Label(root)
+img_label.pack()
+
+
+
 
 # Start the tkinter main loop
 root.mainloop()
