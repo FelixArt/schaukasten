@@ -147,7 +147,7 @@ class CalendarEvent:
             event.get("UID"),
             event.get("LOCATION"),
             event.decoded("LASTMODIFIED"),
-            event.get('RRULE').to_ical().decode('utf-8') if event.has_key("RRULE") else None
+            event.get('RRULE').to_ical().decode('utf-8') if "RRULE" in event else None
         )
 
     def __lt__(self, other):
@@ -292,10 +292,12 @@ def main():
                     rule = rrulestr(c_event.rrule, dtstart=c_event.dt_start, ignoretz=True)
 
                     # Convert start_of_week and end_of_week to datetime.datetime objects
+                    # This is achieved by using e.g. start_of_week (date) and min (time)
                     start_of_week_datetime = datetime.datetime.combine(start_of_week, datetime.datetime.min.time())
                     end_of_week_datetime = datetime.datetime.combine(end_of_week, datetime.datetime.max.time())
 
-                    # Generate the recurring dates within the specified week
+                    # Generate the recurring dates within the specified week using our recurrence rule object
+                    # all occurrences in current week (based on the rrule)
                     recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
 
                     for date in recurring_dates:
@@ -323,6 +325,7 @@ def main():
 
                         # Convert UNTIL value to UTC if it is timezone-aware
                         # TODO what does this do
+                        # todo recurring events seem to be in wrong timezone (utc)
                         if 'RRULE' in new_event and 'UNTIL' in new_event['RRULE']:
                             until_value = new_event['RRULE']['UNTIL']
                             if isinstance(until_value, list):
@@ -347,8 +350,9 @@ def main():
 
         # Create columns for the table
         for j in range(row_amount):
-            data.append(['', '', '', '', '', '', ''])
-        # TODO 💀👇
+            # for each day, add an empty row (according to the maximum events on a day)
+            data.append([""] * len(dates))
+
         for date in dates:
             events = events_by_date[date]
             k = 1
@@ -364,10 +368,10 @@ def main():
                 data[k][(event.dt_start - start_of_week).days] = cell_content
 
                 k = k + 1
-        # Add merged cell coordinates to table style
+
         for row_index, row in enumerate(data):
+            # todo umschreiben
             for col_index, cell in enumerate(row):
-                # Extract the actual cell content from the KeepInFrame object
                 cell_content = cell
                 # Extract the first line (bolded) from the cell contents
                 cell_content_lines = re.findall(r"<b>(.*?)</b>", str(cell_content))
@@ -379,26 +383,25 @@ def main():
                 rowheights = 470 / row_amount
                 color_to_use = event_color_mapping.get(event_name) if event_color_mapping.get(
                     event_name) else tmp_colors.get(event_name)
-                if 0 < row_index < row_amount:
-                    if data[row_index][col_index] != '':
-                        TABLE_STYLE.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
-                    if data[row_index + 1][col_index] == '':
-                        if row_index + 2 <= row_amount and data[row_index + 2][col_index] == '':
-                            TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
-                            rowheights = 3 * rowheights
-                            if data[row_index][col_index] != '':
-                                TABLE_STYLE.append(
-                                    ('BACKGROUND', (col_index, row_index), (col_index, row_index + 2), color_to_use))
-                        else:
-                            TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
-                            rowheights = 2 * rowheights
-                            if data[row_index][col_index] != '':
-                                TABLE_STYLE.append(
-                                    ('BACKGROUND', (col_index, row_index), (col_index, row_index + 1), color_to_use))
-
-                elif row_index == row_amount and data[row_index][col_index] != '':
+                # Set color if event is present (empty cells have no color)
+                if data[row_index][col_index] != '':
                     TABLE_STYLE.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
-
+                # If last event
+                if data[row_index + 1][col_index] == '':
+                    # todo idk maybe remove conditional, maybe magic string
+                    if row_index + 2 <= row_amount and data[row_index + 2][col_index] == '':
+                        TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
+                        rowheights = 3 * rowheights
+                        if data[row_index][col_index] != '':
+                            TABLE_STYLE.append(
+                                ('BACKGROUND', (col_index, row_index), (col_index, row_index + 2), color_to_use))
+                    else:
+                        TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
+                        rowheights = 2 * rowheights
+                        if data[row_index][col_index] != '':
+                            TABLE_STYLE.append(
+                                ('BACKGROUND', (col_index, row_index), (col_index, row_index + 1), color_to_use))
+                # KeepInFrame adding
                 if type(cell_content) == Paragraph:
                     cell_content = KeepInFrame(COLUMN_WIDTH, rowheights, [cell_content])
                     data[row_index][col_index] = cell_content
@@ -416,7 +419,6 @@ def main():
         elements.append(title)
 
         # Create table
-        # TODO ??????? 👇👇👇👇👇🤔🤔🤔
         if row_amount >= 1:
             # Calculate cell heights based on content
             row_heights = [cm * 1.5] + [rowheights] * row_amount
