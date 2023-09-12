@@ -43,6 +43,15 @@ TABLE_STYLE = [
     ('SPAN', (0, 1), (0, 2))
 ]
 
+# Default layout of the document
+DOC_LAYOUT = {
+    "pagesize": landscape(A4),
+    "leftMargin": (6.35 * mm),
+    "rightMargin": (6.35 * mm),
+    "topMargin": (6.35 * mm),
+    "bottomMargin": (6.35 * mm),
+}
+
 # The default event location
 DEFAULT_LOCATION = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
 
@@ -69,6 +78,7 @@ class LanguageField:
         """
         self.ger_val = ger_val
         # Set the eng_val to the ger_val if there is no corresponding translation
+        # todo there is prob. a better way
         self.en_val = en_val if en_val else ger_val
 
     @classmethod
@@ -86,8 +96,6 @@ class LanguageField:
 
 
 class CalendarEvent:
-    # todo add necessary fields
-    #   location
     """
     Models an event in the calendar.
     """
@@ -119,6 +127,9 @@ class CalendarEvent:
         :param translation_dict: The translation dictionary
         :return: A new CalendarEvent instance.
         """
+
+        # todo is this always possible?
+        #   is <>.time() the same as <>.date() (prob not)
         dt_start = event.decoded("DTSTART").date() \
             if isinstance(event.decoded("DTSTART"), datetime.datetime) else \
             event.decoded("DTSTART")
@@ -143,7 +154,7 @@ class CalendarEvent:
         """
         Implement the '<' comparison operator.
         """
-        return self.dt_start > other.dt_start or \
+        return self.dt_start < other.dt_start or \
                (self.dt_start == other.dt_start and self.description < other.description)
 
     def to_cell(self, lang_ger: bool):
@@ -185,10 +196,6 @@ def fetch_calendar(ical_url: str) -> Calendar:
         print('Failed to fetch iCal data.')
         exit(1)
     return Calendar.from_ical(response.text)
-
-
-def group_events_by_dates(events: List[CalendarEvent]):
-    pass
 
 
 def filter_events(events: List[CalendarEvent]):
@@ -270,7 +277,7 @@ def main():
         # Iterate over the events in the calendar
         for event in calendar.walk():
 
-            c_event = CalendarEvent.from_event(event)
+            c_event = CalendarEvent.from_event(event, translation_mapping)
             # Regular event
             if c_event.name == 'VEVENT':
 
@@ -423,9 +430,7 @@ def main():
             elements.append(msg)
 
         # Create the PDF file
-        doc = SimpleDocTemplate(output_path, pagesize=landscape(A4), leftMargin=(6.35 * mm), rightMargin=(6.35 * mm),
-                                topMargin=(6.35 * mm),
-                                bottomMargin=(6.35 * mm))
+        doc = SimpleDocTemplate(output_path, **DOC_LAYOUT)
 
         # Build the document with the elements
         doc.build(elements)
