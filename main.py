@@ -277,6 +277,10 @@ def main():
         # Iterate over the events in the calendar
         for event in calendar.walk():
 
+            # Check whether the event is cancelled
+            if "EXDATE" in event:
+                continue
+
             c_event = CalendarEvent.from_event(event, translation_mapping)
             # Regular event
             if c_event.name == 'VEVENT':
