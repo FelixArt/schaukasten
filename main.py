@@ -16,7 +16,7 @@ from dateutil.rrule import rrulestr
 from colorhash import ColorHash
 
 class Event:
-    def __init__(self, event, start_time=None, end_time=None):
+    def __init__(self, event: Calendar, start_time=None, end_time=None):
         self.title = event.decoded('SUMMARY').decode('utf8')
         # todo this does result in a single-elemented list (resulting in an indexoutofboundsexception @263)
         self.descriptions = re.split("([-_])\\1{4}\\1*", re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', '')))
@@ -77,67 +77,48 @@ def getEvents(week: datetime.datetime):
     end_of_week = start_of_week + datetime.timedelta(days=6)
 
     # Iterate over the events in the calendar
-    for event in calendar.walk():
-        if event.name == 'VEVENT':
-            # Regular event
-            event_start = event.decoded('DTSTART')
-            if isinstance(event_start, datetime.datetime):
-                event_start = event_start.date()
+    for event in calendar.walk('VEVENT'):
+        event_start = event.decoded('DTSTART')
+        if isinstance(event_start, datetime.datetime):
+            event_start = event_start.date()
 
-            event_end = event.decoded('DTEND')
-            if isinstance(event_end, datetime.datetime):
-                event_end = event_end.date()
+        event_end = event.decoded('DTEND')
+        if isinstance(event_end, datetime.datetime):
+            event_end = event_end.date()
 
-            if start_of_week <= event_start <= end_of_week or start_of_week <= event_end <= end_of_week:
-                events_of_week.append(Event(event))
+        if start_of_week <= event_start <= end_of_week or start_of_week <= event_end <= end_of_week:
+            events_of_week.append(Event(event))
+        elif event.get('RRULE'): # Do not have an event as a repeating one and a regular one
+            rrule = event['RRULE'].to_ical().decode('utf-8')
 
-            # Recurring event
-            if event.get('RRULE'):
-                rrule = event['RRULE'].to_ical().decode('utf-8')
+            recurring_events = []
 
-                recurring_events = []
+            # Create the recurrence rule object from the RRULE string
+            rule = rrulestr(rrule, dtstart=event_start, ignoretz=True)
 
-                # Create the recurrence rule object from the RRULE string
-                rule = rrulestr(rrule, dtstart=event_start, ignoretz=True)
+            # Convert start_of_week and end_of_week to datetime.datetime objects
+            start_of_week_datetime = datetime.datetime.combine(start_of_week, datetime.datetime.min.time())
+            end_of_week_datetime = datetime.datetime.combine(end_of_week, datetime.datetime.max.time())
 
-                # Convert start_of_week and end_of_week to datetime.datetime objects
-                start_of_week_datetime = datetime.datetime.combine(start_of_week, datetime.datetime.min.time())
-                end_of_week_datetime = datetime.datetime.combine(end_of_week, datetime.datetime.max.time())
+            # Generate the recurring dates within the specified week
+            recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
 
-                # Generate the recurring dates within the specified week
-                recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
+            event_start_time = event.decoded('DTSTART')
+            if isinstance(event_start_time, datetime.datetime):
+                event_start_time = event_start_time.time()
+        
+            event_end_time = event.decoded('DTEND')
+            if isinstance(event_end_time, datetime.datetime):
+                event_end_time = event_end_time.time()
 
+            for date in recurring_dates:
+                # Calculate the adjusted start and end times based on the original event's duration
+                new_event_start = datetime.datetime.combine(date, event_start_time)
+                new_event_end = datetime.datetime.combine(date, event_end_time)
 
-                for date in recurring_dates:
-                    new_event = event.copy()
-                    
-                    event_start_time = event.decoded('DTSTART')
-                    if isinstance(event_start_time, datetime.datetime):
-                        event_start_time = event_start_time.time()
-                    
-                    event_end_time = event.decoded('DTEND')
-                    if isinstance(event_end_time, datetime.datetime):
-                        event_end_time = event_end_time.time()
+                recurring_events.append(Event(event, new_event_start, new_event_end))
 
-                    # Calculate the adjusted start and end times based on the original event's duration
-                    new_event_start = datetime.datetime.combine(date, event_start_time)
-                    new_event_end = datetime.datetime.combine(date, event_end_time)
-
-                    new_event['DTSTART'].dt = new_event_start
-                    new_event['DTEND'].dt = new_event_end
-
-                    # Convert UNTIL value to UTC if it is timezone-aware
-                    if 'RRULE' in new_event and 'UNTIL' in new_event['RRULE']:
-                        until_value = new_event['RRULE']['UNTIL']
-                        if isinstance(until_value, list):
-                            until_value = until_value[0]
-                        if until_value.tzinfo is not None:
-                            until_value = until_value.astimezone(pytz.UTC)
-                            new_event['RRULE']['UNTIL'] = [until_value]
-
-                    recurring_events.append(Event(new_event))
-
-                events_of_week.extend(recurring_events)
+            events_of_week.extend(recurring_events)
     
     return events_of_week
 
