@@ -155,7 +155,7 @@ def generateOverview(week: datetime.datetime):
                 locale.setlocale(locale.LC_TIME, 'en_US')
             except locale.Error:
                 print("Unsupported locale setting, using default locale.")
-        output_filename = f'event_overview_{current_week}_en.pdf'
+            output_filename = f'event_overview_{current_week}_en.pdf'
 
         output_path = os.path.join(current_directory, output_filename)
 
@@ -190,7 +190,7 @@ def generateOverview(week: datetime.datetime):
         # Filtering duplicate events:
         filtered_events = []
         processed_event_uids = set()
-
+        
         for event in events_of_week:
             event_uid = event.uid
 
@@ -215,6 +215,10 @@ def generateOverview(week: datetime.datetime):
             event_start = event.start_time
             if isinstance(event_start, datetime.datetime):
                 event_start = event_start.date()
+
+            #Filter events if needed
+            if event.title != '':
+                events_by_date[event_start].append(event)
             
 
         events_exist = True
@@ -306,7 +310,8 @@ def generateOverview(week: datetime.datetime):
                 event_name = cell_content_lines[0].strip() if cell_content_lines else '' 
 
 
-                rowheights = 470 / rowamount
+                # Use max to ensure at least one row is generated, even if there are no events
+                rowheights = 470 / max(1, rowamount)
                 color_to_use = get_color(event_name)
                 if row_index > 0 and row_index < rowamount:
                     if data[row_index][col_index] != '':
