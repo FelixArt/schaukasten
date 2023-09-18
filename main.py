@@ -1,6 +1,7 @@
 import os
 import re
 import datetime
+from copy import deepcopy
 
 import requests as rq
 import locale
@@ -22,9 +23,7 @@ from typing import Dict, Callable, Type, TypeVar, Optional, Union, List, Any
 _T = TypeVar("_T")
 
 # Delimiters that separate different translations in the ical description
-LANG_DELIMITER_1 = "----"
-LANG_DELIMITER_2 = "_______________"
-LANG_DELIMITER_3 = "______________"
+REGEX_DELIMITER = r'[-_]{3,}'
 
 # Width of a column
 COLUMN_WIDTH = 110
@@ -84,10 +83,10 @@ class LanguageField:
     @classmethod
     def from_description(cls, description: str):
         description = re.sub(r"<(?!br/).*?>", '', description)
+        splits = re.split(REGEX_DELIMITER, description)
         return cls(
-            *(description.split(LANG_DELIMITER_1) if LANG_DELIMITER_1 in description else
-              description.split(LANG_DELIMITER_2) if LANG_DELIMITER_2 in description else
-              description.split(LANG_DELIMITER_3))
+            *(splits if re.search(REGEX_DELIMITER, description) and len(splits) == 2 else
+              [description, description])
         )
 
     @classmethod
@@ -128,25 +127,15 @@ class CalendarEvent:
         :return: A new CalendarEvent instance.
         """
 
-        # todo is this always possible?
-        #   is <>.time() the same as <>.date() (prob not)
-        dt_start = event.decoded("DTSTART").date() \
-            if isinstance(event.decoded("DTSTART"), datetime.datetime) else \
-            event.decoded("DTSTART")
-
-        dt_end = event.decoded("DTEND").date() \
-            if isinstance(event.decoded("DTEND"), datetime.datetime) else \
-            event.decoded("DTEND")
-
         return cls(
             LanguageField.from_translation(event.get("SUMMARY"), translation_dict),
-            dt_start,
-            dt_end,
-            LanguageField.from_description(event.get("DESCRIPTION")),
+            event.decoded("DTSTART"),
+            event.decoded("DTEND"),
+            LanguageField.from_description(event.get("DESCRIPTION", "")),
             event.get("NAME"),
             event.get("UID"),
             event.get("LOCATION"),
-            event.decoded("LASTMODIFIED"),
+            event.decoded("LAST-MODIFIED"),
             event.get('RRULE').to_ical().decode('utf-8') if "RRULE" in event else None
         )
 
@@ -156,6 +145,10 @@ class CalendarEvent:
         """
         return self.dt_start < other.dt_start or \
                (self.dt_start == other.dt_start and self.description < other.description)
+
+    def get_start_date(self):
+        return self.dt_start.date() if isinstance(self.dt_start, datetime.datetime) \
+            else self.dt_start
 
     def to_cell(self, lang_ger: bool):
         event_title = self.title.ger_val if lang_ger else self.description.en_val
@@ -251,12 +244,6 @@ def main():
     dates = [start_of_week + datetime.timedelta(days=i) for i in range(7)]
     header.extend(date.strftime('%A\n%d %b') for date in dates)
 
-    # TODO:
-    #   Steps:
-    #       1. Parsing
-    #       2. Generating
-    #   Dont do this 👇👇
-
     for t in range(2):
         # Define the output directory and filename
         try:
@@ -273,27 +260,30 @@ def main():
             os.remove(output_path)
 
         events_of_week = []
-
+        i = 0
         # Iterate over the events in the calendar
         for event in calendar.walk():
-
-            # Check whether the event is cancelled
-            if "EXDATE" in event:
-                continue
-
-            c_event = CalendarEvent.from_event(event, translation_mapping)
             # Regular event
-            if c_event.name == 'VEVENT':
+            if event.name == 'VEVENT':
+                # Check whether the event is cancelled
+                # if "EXDATE" in event:
+                #    continue
+                i += 1
+                print(i)
+                if i == 194:
+                    print(event)
+                c_event = CalendarEvent.from_event(event, translation_mapping)
 
-                if start_of_week <= c_event.dt_start <= end_of_week:
+                dt_start = c_event.get_start_date()
+
+                if start_of_week <= dt_start <= end_of_week:
                     events_of_week.append(c_event)
 
                 # Recurring event
-                # TODO what does this do
                 if c_event.rrule:
                     recurring_events = []
                     # Create the recurrence rule object from the RRULE string
-                    rule = rrulestr(c_event.rrule, dtstart=c_event.dt_start, ignoretz=True)
+                    rule = rrulestr(c_event.rrule, dtstart=dt_start, ignoretz=True)
 
                     # Convert start_of_week and end_of_week to datetime.datetime objects
                     # This is achieved by using e.g. start_of_week (date) and min (time)
@@ -312,25 +302,15 @@ def main():
                         event_end_time = c_event.dt_end.time() \
                             if isinstance(c_event.dt_end, datetime.datetime) else \
                             c_event.dt_end
-                        # Calculate the adjusted start and end times based on the original event's duration
-                        new_event_start = datetime.datetime.combine(date, event_start_time)
-                        new_event_end = datetime.datetime.combine(date, event_end_time)
-                        new_event = CalendarEvent(
-                            title=c_event.title,
-                            description=c_event.description,
-                            rrule=c_event.rrule,
-                            name=c_event.name,
-                            dt_start=new_event_start,
-                            dt_end=new_event_end,
-                            uid=c_event.uid,
-                            location=c_event.location,
-                            last_modified=c_event.last_modified
-                        )
+
+                        new_event = deepcopy(c_event)
+                        new_event.dt_start = datetime.datetime.combine(date, event_start_time)
+                        new_event.dt_end = datetime.datetime.combine(date, event_end_time)
 
                         # Convert UNTIL value to UTC if it is timezone-aware
                         # TODO what does this do
                         # todo recurring events seem to be in wrong timezone (utc)
-                        if 'RRULE' in new_event and 'UNTIL' in new_event['RRULE']:
+                        if new_event.rrule and 'UNTIL' in new_event.rrule:
                             until_value = new_event['RRULE']['UNTIL']
                             if isinstance(until_value, list):
                                 until_value = until_value[0]
@@ -338,99 +318,86 @@ def main():
                                 until_value = until_value.astimezone(pytz.UTC)
                                 new_event['RRULE']['UNTIL'] = [until_value]
 
-                        recurring_events.append(CalendarEvent.from_event(new_event))
+                        recurring_events.append(new_event)
 
                     events_of_week.extend(recurring_events)
 
         data = [header]
 
         # Create a dictionary to store events by date
+
         events_by_date = {date: sorted([event for event in filter_events(events_of_week)
-                                        if event.dt_start == date and event.title])
+                                        if event.get_start_date() == date and event.title])
                           for date in dates}
 
         # Find the highest amount of events
         row_amount = max([len(events_by_date[date]) for date in dates])
 
+        # Stylesheet
+        styles = getSampleStyleSheet()
+
+        # Default row height
+        row_height = 470 / row_amount
+
         # Create columns for the table
-        for j in range(row_amount):
+        for j in range(0, row_amount):
             # for each day, add an empty row (according to the maximum events on a day)
             data.append([""] * len(dates))
 
-        for date in dates:
+        for col_index, date in enumerate(dates):
             events = events_by_date[date]
-            k = 1
 
-            for event in sorted(events):
+            for row_index, event in enumerate(sorted(events)):
                 # Format event information
 
-                styles = getSampleStyleSheet()
                 cell_style = styles["BodyText"]
                 cell_style.fontSize = CELL_FONT_SIZE
                 cell_content = Paragraph(event.to_cell(not t), cell_style)
 
-                data[k][(event.dt_start - start_of_week).days] = cell_content
+                event_name = event.title.ger_val
 
-                k = k + 1
-
-        for row_index, row in enumerate(data):
-            # todo umschreiben
-            for col_index, cell in enumerate(row):
-                cell_content = cell
-                # Extract the first line (bolded) from the cell contents
-                cell_content_lines = re.findall(r"<b>(.*?)</b>", str(cell_content))
-                event_name = cell_content_lines[0].strip() if cell_content_lines else ''
+                scoped_row_height = row_height
 
                 if event_name not in event_color_mapping and event_name not in tmp_colors:
                     tmp_colors[event_name] = (random.uniform(0.7, 1), random.uniform(0.7, 1), random.uniform(0.7, 1))
 
-                rowheights = 470 / row_amount
-                color_to_use = event_color_mapping.get(event_name) if event_color_mapping.get(
+                event_color = event_color_mapping.get(event_name) if event_color_mapping.get(
                     event_name) else tmp_colors.get(event_name)
-                # Set color if event is present (empty cells have no color)
-                if data[row_index][col_index] != '':
-                    TABLE_STYLE.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
-                # If last event
-                if data[row_index + 1][col_index] == '':
-                    # todo idk maybe remove conditional, maybe magic string
-                    if row_index + 2 <= row_amount and data[row_index + 2][col_index] == '':
-                        TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
-                        rowheights = 3 * rowheights
-                        if data[row_index][col_index] != '':
-                            TABLE_STYLE.append(
-                                ('BACKGROUND', (col_index, row_index), (col_index, row_index + 2), color_to_use))
+
+                if len(events) == row_index + 1:
+                    if row_index + 2 <= row_amount:
+                        #TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
+                        scoped_row_height = 3 * scoped_row_height
                     else:
-                        TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
-                        rowheights = 2 * rowheights
-                        if data[row_index][col_index] != '':
-                            TABLE_STYLE.append(
-                                ('BACKGROUND', (col_index, row_index), (col_index, row_index + 1), color_to_use))
-                # KeepInFrame adding
-                if type(cell_content) == Paragraph:
-                    cell_content = KeepInFrame(COLUMN_WIDTH, rowheights, [cell_content])
-                    data[row_index][col_index] = cell_content
+                        #TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
+                        scoped_row_height = 2 * scoped_row_height
+
+                if cell_content != "":
+                  #TABLE_STYLE.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), event_color))
+                  cell_content = KeepInFrame(COLUMN_WIDTH, row_height, [cell_content])
+
+                data[row_index + 1][col_index] = cell_content
 
         elements = []
 
         # Add title
-        title_style = getSampleStyleSheet()["Title"]
         if t == 0:
             title_text = f"Veranstaltungen der Woche vom {start_of_week.strftime('%d %b %Y')} bis {end_of_week.strftime('%d %b %Y')}"
         else:
             title_text = f"<i>Events of the week from {start_of_week.strftime('%d %b %Y')} to {end_of_week.strftime('%d %b %Y')}</i>"
 
-        title = Paragraph(title_text, title_style)
+        title = Paragraph(title_text, styles["Title"])
         elements.append(title)
 
         # Create table
         if row_amount >= 1:
             # Calculate cell heights based on content
-            row_heights = [cm * 1.5] + [rowheights] * row_amount
+            row_heights = [cm * 1.5] + [row_height] * row_amount
             table = Table(data, colWidths=COLUMN_WIDTH, rowHeights=row_heights)
-            table.setStyle(TableStyle(TABLE_STYLE))
+            #table.setStyle(TableStyle(TABLE_STYLE))
             elements.append(table)
         else:
-            msg_style = getSampleStyleSheet()["Heading1"]
+            msg_style = styles["Heading1"]
             msg = Paragraph(NO_EVENTS_MSG, msg_style)
             elements.append(Spacer(1, 2 * cm))
             elements.append(msg)
