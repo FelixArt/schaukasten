@@ -4,10 +4,14 @@ This project is a helper that reads a calendar that is maintained in a format si
 
 ## Install
 
-As for now, since this project is still in development, you can install and use this tool using the build and dependency management tool [pixi](https://prefix.dev/docs/prefix/overview#pixi-package-manager). Once pixi is installed, you can install all necessary dependencies with
+As for now, since this project is still in development, you can install and use this tool using the build and dependency management tool [poetry](https://python-poetry.org/). If you fulfill the version requirements (3.12) poetry should automatically create a new virtualenv for you. Look in the Poetry doc for alternative ways to define the env if you dont want that.
+
+You install all dependecies with
 
 ```bash
-pixi install
+poetry install
 ```
+
+We recommend [pyenv](https://github.com/pyenv/pyenv) as a python version manager if you still need the correct python version, i.e. when poetry complains you would not have a compatible python version.
 
 ## Usage
