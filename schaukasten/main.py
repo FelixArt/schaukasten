@@ -1,21 +1,22 @@
 from typing import Annotated
 
-import pendulum
+import pendulum as pd
 import typer
+from read import read_calendar_from_url
 
 
 def main(
     year: Annotated[
         int,
         typer.Argument(
-            default_factory=pendulum.now().year,
+            default_factory=pd.now().year,
             help="The year, for which to create the docs. The default is the current year.",
         ),
     ],
     week: Annotated[
         int,
         typer.Argument(
-            default_factory=pendulum.now().week_of_year,
+            default_factory=pd.now().week_of_year,
             min=1,
             max=52,
             help="The week, for which to create the docs. The default is the current week.",
@@ -23,10 +24,14 @@ def main(
     ],
     url: Annotated[
         str,
-        typer.Argument(help="The URL where to source calendar is found.", envvar="URL"),
-    ],
+        typer.Option(
+            help="The URL where to source calendar is found.",
+            envvar="CALENDAR_URL",
+            show_default=False,
+        ),
+    ] = "",
 ):
-    pass
+    fetched_calendar = read_calendar_from_url(url)
 
 
 if __name__ == "__main__":
