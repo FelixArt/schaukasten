@@ -5,17 +5,11 @@ from copy import deepcopy
 
 import requests as rq
 import locale
-import random
 import pytz
 import json
 from icalendar import Calendar
 from icalendar.cal import Component
-from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm, mm
-from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
 from typing import Dict, Callable, Type, TypeVar, Optional, Union, List, Any
 
@@ -24,32 +18,6 @@ _T = TypeVar("_T")
 
 # Delimiters that separate different translations in the ical description
 REGEX_DELIMITER = r'[-_]{3,}'
-
-# Width of a column
-COLUMN_WIDTH = 110
-
-# Base-style for the table
-TABLE_STYLE = [
-    ('BACKGROUND', (0, 0), (-1, 0), colors.white),
-    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-    ('FONTSIZE', (0, 0), (-1, 0), 14),
-    ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
-    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-    ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ('SPAN', (0, 1), (0, 2))
-]
-
-# Default layout of the document
-DOC_LAYOUT = {
-    "pagesize": landscape(A4),
-    "leftMargin": (6.35 * mm),
-    "rightMargin": (6.35 * mm),
-    "topMargin": (6.35 * mm),
-    "bottomMargin": (6.35 * mm),
-}
 
 # The default event location
 DEFAULT_LOCATION = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
@@ -60,8 +28,6 @@ NO_EVENTS_MSG = "Diese Woche keine Veranstaltungen<br/><i>No events this week</i
 # Timezone to be considered
 LOCAL_TIMEZONE = pytz.timezone('Europe/Berlin')
 
-# Font size of the cells
-CELL_FONT_SIZE = 12
 
 
 class LanguageField:
@@ -82,6 +48,12 @@ class LanguageField:
 
     @classmethod
     def from_description(cls, description: str):
+        """
+        Creates a LanguageField from the body of a calendar event. Assumes there is a delimiter
+        in form of "---<...>" or "___<...>"
+        :param description: The description of the calendar event.
+        :return: A LanguageField with the corresponding german and english values.
+        """
         description = re.sub(r"<(?!br/).*?>", '', description)
         splits = re.split(REGEX_DELIMITER, description)
         return cls(
@@ -91,7 +63,13 @@ class LanguageField:
 
     @classmethod
     def from_translation(cls, ger_val: str, translation_dict: Dict[str, str]):
-        return cls(ger_val, translation_dict[ger_val] if ger_val in translation_dict else None)
+        """
+        Creates a LanguageField from the translation entry.
+        :param ger_val: The german value of this field.
+        :param translation_dict: The translation dictionary.
+        :return: A LanguageField with the german and corresponding english value
+        """
+        return cls(ger_val, translation_dict[ger_val] if ger_val in translation_dict else ger_val)
 
 
 class CalendarEvent:
@@ -147,11 +125,17 @@ class CalendarEvent:
                (self.dt_start == other.dt_start and self.description < other.description)
 
     def get_start_date(self):
+        """
+        Returns the start date of a calendar event.
+        :return: The start date
+        """
         return self.dt_start.date() if isinstance(self.dt_start, datetime.datetime) \
             else self.dt_start
 
     def to_cell(self, lang_ger: bool):
-        event_title = self.title.ger_val if lang_ger else self.description.en_val
+        if not lang_ger:
+            pass        # todo
+        event_title = self.title.ger_val if lang_ger else self.title.en_val
         event_time = f"{self.dt_start.astimezone(LOCAL_TIMEZONE).strftime('%H:%M')} - " \
                      f"{self.dt_end.astimezone(LOCAL_TIMEZONE).strftime('%H:%M')} "
         event_location = self.location if self.location != DEFAULT_LOCATION else ''
@@ -217,6 +201,9 @@ def filter_events(events: List[CalendarEvent]):
 
 
 def main():
+    """
+    Creates the event plan for the current week.
+    """
     # Output directory and name
     current_directory = os.getcwd()
     current_week = datetime.datetime.now().strftime('%Y-%W')
@@ -269,7 +256,7 @@ def main():
                 # if "EXDATE" in event:
                 #    continue
                 i += 1
-                print(i)
+
                 if i == 194:
                     print(event)
                 c_event = CalendarEvent.from_event(event, translation_mapping)
@@ -325,90 +312,14 @@ def main():
         data = [header]
 
         # Create a dictionary to store events by date
-
         events_by_date = {date: sorted([event for event in filter_events(events_of_week)
-                                        if event.get_start_date() == date and event.title])
-                          for date in dates}
+                                        if event.get_start_date() == date and event.title]) for date in dates}
 
-        # Find the highest amount of events
-        row_amount = max([len(events_by_date[date]) for date in dates])
-
-        # Stylesheet
-        styles = getSampleStyleSheet()
-
-        # Default row height
-        row_height = 470 / row_amount
-
-        # Create columns for the table
-        for j in range(0, row_amount):
-            # for each day, add an empty row (according to the maximum events on a day)
-            data.append([""] * len(dates))
-
-        for col_index, date in enumerate(dates):
-            events = events_by_date[date]
-
-            for row_index, event in enumerate(sorted(events)):
-                # Format event information
-
-                cell_style = styles["BodyText"]
-                cell_style.fontSize = CELL_FONT_SIZE
-                cell_content = Paragraph(event.to_cell(not t), cell_style)
-
-                event_name = event.title.ger_val
-
-                scoped_row_height = row_height
-
-                if event_name not in event_color_mapping and event_name not in tmp_colors:
-                    tmp_colors[event_name] = (random.uniform(0.7, 1), random.uniform(0.7, 1), random.uniform(0.7, 1))
-
-                event_color = event_color_mapping.get(event_name) if event_color_mapping.get(
-                    event_name) else tmp_colors.get(event_name)
-
-                if len(events) == row_index + 1:
-                    if row_index + 2 <= row_amount:
-                        #TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
-                        scoped_row_height = 3 * scoped_row_height
-                    else:
-                        #TABLE_STYLE.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
-                        scoped_row_height = 2 * scoped_row_height
-
-                if cell_content != "":
-                  #TABLE_STYLE.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), event_color))
-                  cell_content = KeepInFrame(COLUMN_WIDTH, row_height, [cell_content])
-
-                data[row_index + 1][col_index] = cell_content
-
-        elements = []
-
-        # Add title
-        if t == 0:
-            title_text = f"Veranstaltungen der Woche vom {start_of_week.strftime('%d %b %Y')} bis {end_of_week.strftime('%d %b %Y')}"
-        else:
-            title_text = f"<i>Events of the week from {start_of_week.strftime('%d %b %Y')} to {end_of_week.strftime('%d %b %Y')}</i>"
-
-        title = Paragraph(title_text, styles["Title"])
-        elements.append(title)
-
-        # Create table
-        if row_amount >= 1:
-            # Calculate cell heights based on content
-            row_heights = [cm * 1.5] + [row_height] * row_amount
-            table = Table(data, colWidths=COLUMN_WIDTH, rowHeights=row_heights)
-            #table.setStyle(TableStyle(TABLE_STYLE))
-            elements.append(table)
-        else:
-            msg_style = styles["Heading1"]
-            msg = Paragraph(NO_EVENTS_MSG, msg_style)
-            elements.append(Spacer(1, 2 * cm))
-            elements.append(msg)
-
-        # Create the PDF file
-        doc = SimpleDocTemplate(output_path, **DOC_LAYOUT)
-
-        # Build the document with the elements
-        doc.build(elements)
-
-        print(f'Event overview table generated: {output_path}')
+        # Iteration zB durch...
+        for date in events_by_date.keys():
+            print(f"Date: {date}:\n")
+            for event in events_by_date[date]:
+                print(event.to_cell(lang_ger=True) + "\n")
 
 
 if __name__ == "__main__":
