@@ -1,387 +1,326 @@
-import argparse
 import os
 import re
 import datetime
-import requests
+from copy import deepcopy
+
+import requests as rq
 import locale
-import random
 import pytz
+import json
 from icalendar import Calendar
-from reportlab.lib.pagesizes import landscape, A4
+from icalendar.cal import Component
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm, mm
-from reportlab.platypus.flowables import KeepInFrame
 from dateutil.rrule import rrulestr
-from colorhash import ColorHash
+from typing import Dict, Callable, Type, TypeVar, Optional, Union, List, Any
 
-class Event:
-    def __init__(self, event: Calendar, start_time=None, end_time=None):
-        self.title = event.decoded('SUMMARY').decode('utf8')
-        # todo this does result in a single-elemented list (resulting in an indexoutofboundsexception @263)
-        self.descriptions = re.split("([-_])\\1{4}\\1*", re.sub(r'<(?!br/).*?>', '', event.get('DESCRIPTION', '')))
-        del self.descriptions[1::2]
-        self.start_time = start_time or event.decoded('DTSTART')
-        self.end_time = end_time or event.decoded('DTEND')
+# TypeVar to be used in type hints
+_T = TypeVar("_T")
 
-        if not isinstance(self.start_time, datetime.datetime):
-            self.start_time = datetime.datetime.combine(self.start_time, datetime.datetime.min.time())
-        
-        if not isinstance(self.end_time, datetime.datetime):
-            self.end_time = datetime.datetime.combine(self.end_time, datetime.datetime.max.time())
+# Delimiters that separate different translations in the ical description
+REGEX_DELIMITER = r'[-_]{3,}'
 
-        self.uid = event.get('UID')
-        self.last_modified = event.decoded('LAST-MODIFIED')
-        self.location = event.get('LOCATION', '')
-    
-    def getDescription(self, language: int):
-        if len(self.descriptions) > language:
-            return self.descriptions[language]
-        else:
-            return "Keine Beschreibung/No Description"
+# The default event location
+DEFAULT_LOCATION = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
+
+# Message for a week without events
+NO_EVENTS_MSG = "Diese Woche keine Veranstaltungen<br/><i>No events this week</i>"
+
+# Timezone to be considered
+LOCAL_TIMEZONE = pytz.timezone('Europe/Berlin')
 
 
-def get_color(event_name: str):
-    # Define event name to color mapping
-    event_color_mapping = {
-        'Filmabend': colors.HexColor("#E78080"),
-        'Queer Feminist Action': colors.HexColor("#88E780"),
-        'Queercafé': colors.HexColor("#E780DB"),
-        'Trans-Beratung': colors.HexColor("#80E7E1"),
-        'test²multiply': colors.HexColor("#F6A97C"),
-        'International Evening': colors.HexColor("#80E7A7"),
-        'Ace & Aro Abend': colors.HexColor("#E7E680"),
-        'Fesseltreff': colors.HexColor("#AA80E7"),
-        'Bi-Pan* and Friends': colors.HexColor("#E7C280"),
-        'FLINTA-Abend': colors.HexColor("#DF80E7"),
-        'Plenum': colors.HexColor("#8081E7"),
-        'Spieleabend': colors.HexColor("#E7D080"),
-        'TIN* Abend': colors.HexColor("#84D980"),
-        'Poly Abend': colors.HexColor("#D2D984"),
-        'Warm Up': colors.HexColor("#F05252"),
-        'Anime Abend (Film)': colors.HexColor("#f2966f"),
-        'Anime Abend Serie': colors.HexColor("#BDF370"),
-        'Bibliothekstreffen': colors.HexColor("#99FFFC"),
-        # Add more event names and corresponding colors as key-value pairs
-    }
 
-    # We use "or" instead of the default kwarg of .get() as this avoid calculating the value unnecessarily
-    return event_color_mapping.get(event_name) or colors.HexColor(ColorHash(event_name).hex)
+class LanguageField:
+    """
+    Represents an entry that has a corresponding translation
+    """
 
-def getEvents(week: datetime.date):
-    # Fetch data from the iCal URL
-    ical_url = 'https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics'
-    response = requests.get(ical_url)
+    def __init__(self, ger_val: str, en_val: Optional[str] = None):
+        """
+        Creates a new LanguageField.
+        :param ger_val: The german text.
+        :param en_val: The english text.
+        """
+        self.ger_val = ger_val
+        # Set the eng_val to the ger_val if there is no corresponding translation
+        # todo there is prob. a better way
+        self.en_val = en_val if en_val else ger_val
+
+    @classmethod
+    def from_description(cls, description: str):
+        """
+        Creates a LanguageField from the body of a calendar event. Assumes there is a delimiter
+        in form of "---<...>" or "___<...>"
+        :param description: The description of the calendar event.
+        :return: A LanguageField with the corresponding german and english values.
+        """
+        description = re.sub(r"<(?!br/).*?>", '', description)
+        splits = re.split(REGEX_DELIMITER, description)
+        return cls(
+            *(splits if re.search(REGEX_DELIMITER, description) and len(splits) == 2 else
+              [description, description])
+        )
+
+    @classmethod
+    def from_translation(cls, ger_val: str, translation_dict: Dict[str, str]):
+        """
+        Creates a LanguageField from the translation entry.
+        :param ger_val: The german value of this field.
+        :param translation_dict: The translation dictionary.
+        :return: A LanguageField with the german and corresponding english value
+        """
+        return cls(ger_val, translation_dict[ger_val] if ger_val in translation_dict else ger_val)
+
+
+class CalendarEvent:
+    """
+    Models an event in the calendar.
+    """
+
+    def __init__(self, title: LanguageField,
+                 dt_start,
+                 dt_end,
+                 description: LanguageField,
+                 name: str,
+                 uid: Any,  # TODO what is this
+                 location: str,
+                 last_modified: str,
+                 rrule: Optional[Any] = None):
+        self.title = title
+        self.dt_start = dt_start
+        self.dt_end = dt_end
+        self.description = description
+        self.name = name
+        self.uid = uid
+        self.location = location
+        self.last_modified = last_modified
+        self.rrule = rrule
+
+    @classmethod
+    def from_event(cls, event: Component, translation_dict: Dict[str, str]):
+        """
+        Creates a CalendarEvent from an existing event.
+        :param event: The event
+        :param translation_dict: The translation dictionary
+        :return: A new CalendarEvent instance.
+        """
+
+        return cls(
+            LanguageField.from_translation(event.get("SUMMARY"), translation_dict),
+            event.decoded("DTSTART"),
+            event.decoded("DTEND"),
+            LanguageField.from_description(event.get("DESCRIPTION", "")),
+            event.get("NAME"),
+            event.get("UID"),
+            event.get("LOCATION"),
+            event.decoded("LAST-MODIFIED"),
+            event.get('RRULE').to_ical().decode('utf-8') if "RRULE" in event else None
+        )
+
+    def __lt__(self, other):
+        """
+        Implement the '<' comparison operator.
+        """
+        return self.dt_start < other.dt_start or \
+               (self.dt_start == other.dt_start and self.description < other.description)
+
+    def get_start_date(self):
+        """
+        Returns the start date of a calendar event.
+        :return: The start date
+        """
+        return self.dt_start.date() if isinstance(self.dt_start, datetime.datetime) \
+            else self.dt_start
+
+    def to_cell(self, lang_ger: bool):
+        if not lang_ger:
+            pass        # todo
+        event_title = self.title.ger_val if lang_ger else self.title.en_val
+        event_time = f"{self.dt_start.astimezone(LOCAL_TIMEZONE).strftime('%H:%M')} - " \
+                     f"{self.dt_end.astimezone(LOCAL_TIMEZONE).strftime('%H:%M')} "
+        event_location = self.location if self.location != DEFAULT_LOCATION else ''
+        event_description = self.description.ger_val if lang_ger else self.description.en_val
+
+        return f"""
+        <b>{event_title}</b>
+        {event_time}
+        <i>{event_location}</i>
+        {event_description}
+        """
+
+
+def load_json(path: str, modification_fun: Optional[Callable[[str], Type[_T]]] = None) -> Dict[str, Union[str, _T]]:
+    """
+    Loads a given json file and modifies its values.
+    :param path: The relative path to the json file.
+    :param modification_fun: A function which is applied to all values.
+    :return: A dictionary containing the (modified) data from the json file.
+    """
+    with open(path, "r") as file:
+        data = json.load(file)
+    return data if modification_fun is None \
+        else {key: modification_fun(val) for key, val in data.items()}
+
+
+def fetch_calendar(ical_url: str) -> Calendar:
+    """
+    Fetches the calendar from the given url and parses it to a calendar object.
+    :param ical_url: The url to the ical.
+    :return: A parsed calendar.
+    """
+    response = rq.get(ical_url)
     if response.status_code != 200:
         print('Failed to fetch iCal data.')
-        exit()
+        exit(1)
+    return Calendar.from_ical(response.text)
 
-    # Parse iCal data
-    calendar = Calendar.from_ical(response.text)
 
-    events_of_week = []
-    # Get the events of the current week
-    current_date = week
-    start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
-    end_of_week = start_of_week + datetime.timedelta(days=6)
+def filter_events(events: List[CalendarEvent]):
+    """
+    Filter duplicates.
+    :param events: A list of events.
+    :return: A list of events without duplicates.
+    """
+    filtered_events = []
+    processed_event_uids = set()
+    for event in events:
+        if event.uid not in processed_event_uids:
+            filtered_events.append(event)
+            processed_event_uids.add(event.uid)
+        else:
+            existing_event_index = next(
+                (index for index, e in enumerate(filtered_events) if e.uid == event.uid), None
+            )
 
-    # Iterate over the events in the calendar
-    for event in calendar.walk('VEVENT'):
-        event_start = event.decoded('DTSTART')
-        if isinstance(event_start, datetime.datetime):
-            event_start = event_start.date()
+            if existing_event_index is not None:
+                existing_event = filtered_events[existing_event_index]
 
-        event_end = event.decoded('DTEND')
-        if isinstance(event_end, datetime.datetime):
-            event_end = event_end.date()
+                if event.last_modified > existing_event.last_modified:
+                    filtered_events[existing_event_index] = event
+    return filtered_events
 
-        if start_of_week <= event_start <= end_of_week or start_of_week <= event_end <= end_of_week:
-            events_of_week.append(Event(event))
-        elif event.get('RRULE'): # Do not have an event as a repeating one and a regular one
-            rrule = event['RRULE'].to_ical().decode('utf-8')
 
-            recurring_events = []
-
-            # Create the recurrence rule object from the RRULE string
-            rule = rrulestr(rrule, dtstart=event_start, ignoretz=True)
-
-            # Convert start_of_week and end_of_week to datetime.datetime objects
-            start_of_week_datetime = datetime.datetime.combine(start_of_week, datetime.datetime.min.time())
-            end_of_week_datetime = datetime.datetime.combine(end_of_week, datetime.datetime.max.time())
-
-            # Generate the recurring dates within the specified week
-            recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
-
-            event_start_time = event.decoded('DTSTART')
-            if isinstance(event_start_time, datetime.datetime):
-                event_start_time = event_start_time.time()
-        
-            event_end_time = event.decoded('DTEND')
-            if isinstance(event_end_time, datetime.datetime):
-                event_end_time = event_end_time.time()
-
-            for date in recurring_dates:
-                # Calculate the adjusted start and end times based on the original event's duration
-                new_event_start = datetime.datetime.combine(date, event_start_time)
-                new_event_end = datetime.datetime.combine(date, event_end_time)
-
-                recurring_events.append(Event(event, new_event_start, new_event_end))
-
-            events_of_week.extend(recurring_events)
-    
-    return events_of_week
-
-def generateOverview(week: datetime.datetime):    
+def main():
+    """
+    Creates the event plan for the current week.
+    """
     # Output directory and name
     current_directory = os.getcwd()
-    current_week = week.strftime('%Y-%W')
+    current_week = datetime.datetime.now().strftime('%Y-%W')
 
-    events_of_week = getEvents(week)
-    current_date = week
+    # Parse colors that are already set
+    event_color_mapping = load_json("data/colors.json", lambda x: colors.HexColor(x))
+
+    # Parse translations
+    translation_mapping = load_json("data/translations.json")
+
+    # List of colors that are not set
+    tmp_colors = {}
+
+    calendar = fetch_calendar(
+        'https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics'
+    )
+
+    # Get the date scopes
+    current_date = datetime.datetime.now().date()
     start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
     end_of_week = start_of_week + datetime.timedelta(days=6)
+
+    # Prepare column Headers
+    header = []
+    dates = [start_of_week + datetime.timedelta(days=i) for i in range(7)]
+    header.extend(date.strftime('%A\n%d %b') for date in dates)
 
     for t in range(2):
         # Define the output directory and filename
-        if t == 0:
-            try:
-                locale.setlocale(locale.LC_TIME, 'de_DE')
-            except locale.Error:
-                print("Unsupported locale setting, using default locale.")
-            output_filename = f'event_overview_{current_week}_de.pdf'
-        else:
-            try:
-                locale.setlocale(locale.LC_TIME, 'en_US')
-            except locale.Error:
-                print("Unsupported locale setting, using default locale.")
-            output_filename = f'event_overview_{current_week}_en.pdf'
+        try:
+            locale.setlocale(locale.LC_TIME, "de_DE.utf8" if not t else "en_US.utf8")
+        except locale.Error:
+            print("Unsupported locale setting, using default locale.")
+
+        output_filename = f'event_overview_{current_week}_{"de" if not t else "en"}.pdf'
 
         output_path = os.path.join(current_directory, output_filename)
 
-        # Check if the output file already exists
+        # Remove the file if it already exists
         if os.path.exists(output_path):
-            suffix = 1
-            base_name, extension = os.path.splitext(output_filename)
-            
-            # Generate a new filename with an ascending suffix
-            while os.path.exists(output_path):
-                new_filename = f"{base_name}({suffix}){extension}"
-                output_path = os.path.join(current_directory, new_filename)
-                suffix += 1
+            os.remove(output_path)
 
-        rowamount = 0
+        events_of_week = []
+        i = 0
+        # Iterate over the events in the calendar
+        for event in calendar.walk():
+            # Regular event
+            if event.name == 'VEVENT':
+                # Check whether the event is cancelled
+                # if "EXDATE" in event:
+                #    continue
+                i += 1
 
-        # Prepare column Headers
-        header = []
-        dates = [start_of_week + datetime.timedelta(days=i) for i in range(7)]
-        header.extend(date.strftime('%A\n%d %b') for date in dates)
+                if i == 194:
+                    print(event)
+                c_event = CalendarEvent.from_event(event, translation_mapping)
+
+                dt_start = c_event.get_start_date()
+
+                if start_of_week <= dt_start <= end_of_week:
+                    events_of_week.append(c_event)
+
+                # Recurring event
+                if c_event.rrule:
+                    recurring_events = []
+                    # Create the recurrence rule object from the RRULE string
+                    rule = rrulestr(c_event.rrule, dtstart=dt_start, ignoretz=True)
+
+                    # Convert start_of_week and end_of_week to datetime.datetime objects
+                    # This is achieved by using e.g. start_of_week (date) and min (time)
+                    start_of_week_datetime = datetime.datetime.combine(start_of_week, datetime.datetime.min.time())
+                    end_of_week_datetime = datetime.datetime.combine(end_of_week, datetime.datetime.max.time())
+
+                    # Generate the recurring dates within the specified week using our recurrence rule object
+                    # all occurrences in current week (based on the rrule)
+                    recurring_dates = rule.between(start_of_week_datetime, end_of_week_datetime, inc=True)
+
+                    for date in recurring_dates:
+                        event_start_time = c_event.dt_start.time() \
+                            if isinstance(c_event.dt_start, datetime.datetime) else \
+                            c_event.dt_start
+
+                        event_end_time = c_event.dt_end.time() \
+                            if isinstance(c_event.dt_end, datetime.datetime) else \
+                            c_event.dt_end
+
+                        new_event = deepcopy(c_event)
+                        new_event.dt_start = datetime.datetime.combine(date, event_start_time)
+                        new_event.dt_end = datetime.datetime.combine(date, event_end_time)
+
+                        # Convert UNTIL value to UTC if it is timezone-aware
+                        # TODO what does this do
+                        # todo recurring events seem to be in wrong timezone (utc)
+                        if new_event.rrule and 'UNTIL' in new_event.rrule:
+                            until_value = new_event['RRULE']['UNTIL']
+                            if isinstance(until_value, list):
+                                until_value = until_value[0]
+                            if until_value.tzinfo is not None:
+                                until_value = until_value.astimezone(pytz.UTC)
+                                new_event['RRULE']['UNTIL'] = [until_value]
+
+                        recurring_events.append(new_event)
+
+                    events_of_week.extend(recurring_events)
+
         data = [header]
 
-        # Set your local timezone
-        local_timezone = pytz.timezone('Europe/Berlin')
-
-        # Location Filter
-        location_variable = 'Queerreferat an den Aachener Hochschulen e.V., Gerlachstraße 20-22, 52064 Aachen, Deutschland'
-
         # Create a dictionary to store events by date
-        events_by_date = {date: [] for date in dates}
+        events_by_date = {date: sorted([event for event in filter_events(events_of_week)
+                                        if event.get_start_date() == date and event.title]) for date in dates}
 
-        # Filtering duplicate events:
-        filtered_events = []
-        processed_event_uids = set()
-        
-        for event in events_of_week:
-            event_uid = event.uid
+        # Iteration zB durch...
+        for date in events_by_date.keys():
+            print(f"Date: {date}:\n")
+            for event in events_by_date[date]:
+                print(event.to_cell(lang_ger=True) + "\n")
 
-            if event_uid not in processed_event_uids:
-                filtered_events.append(event)
-                processed_event_uids.add(event_uid)
-            else:
-                existing_event_index = next(
-                    (index for index, e in enumerate(filtered_events) if e.uid == event_uid), None
-                )
-
-                if existing_event_index is not None:
-                    existing_event = filtered_events[existing_event_index]
-
-                    if event.last_modified > existing_event.last_modified:
-                        filtered_events[existing_event_index] = event
-
-        events_of_week = filtered_events
-
-        # Group events by date
-        for event in events_of_week:
-            event_start = event.start_time
-            if isinstance(event_start, datetime.datetime):
-                event_start = event_start.date()
-
-            #Filter events if needed
-            if event.title != '':
-                events_by_date[event_start].append(event)
-            
-
-        events_exist = True
-        # Find highest amount of events
-        maxevents = 0
-        for date in dates:
-            if len(events_by_date[date]) > maxevents:
-                maxevents = len(events_by_date[date])
-        rowamount = maxevents
-        if maxevents < 1:
-            events_exist = False
-
-
-        columnwidth = 110
-
-        # Create columns for the table
-        for j in range(rowamount):
-            data.append(['', '', '', '', '', '', ''])
-
-        for date in dates:
-            events = events_by_date[date]
-            k = 1
-
-            #import ipdb; ipdb.set_trace()
-            events = sorted(events, key=lambda e: e.start_time.astimezone(local_timezone))
-            sorted_events = []
-            for (index, ev) in enumerate(events):
-                if ev in sorted_events:
-                    continue
-                if index != len(events) - 1 and ev.start_time.astimezone(local_timezone) == events[index+1].start_time.astimezone(local_timezone) and ev.title > events[index + 1].title:
-                    sorted_events.append(events[index + 1])
-                    sorted_events.append(ev)
-                else:
-                    sorted_events.append(ev)
-                
-
-            # todo make deterministic by lexicographic comparison
-            for event in sorted_events:
-                # Format event information
-                event_title = event.title
-                event_time = f"{event.start_time.astimezone(local_timezone).strftime('%H:%M')} - {event.end_time.astimezone(local_timezone).strftime('%H:%M')}"
-                event_location = "<br/>" + event.location if event.location != location_variable else ''
-                event_description = event.getDescription(t)
-
-
-                styles = getSampleStyleSheet()
-                cell_style = styles["BodyText"]
-                cell_style.fontSize = 12
-
-                # Collect event infos
-                cell_contents = f"<b>{event_title}</b><br/>{event_time}<i>{event_location}</i><br/>{event_description}"
-                cell_content = Paragraph(cell_contents, cell_style)
-
-                event_start = event.start_time
-                if isinstance(event_start, datetime.datetime):
-                    event_start = event_start.date()
-
-                data[k][(event_start - start_of_week).days] = cell_content
-
-                k = k + 1
-
-
-
-        # Create table style
-        table_style = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.white),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 14),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('SPAN', (0, 1), (0, 2))
-        ]
-
-        
-
-        spanned_cell_color = None  # Initialize spanned_cell_color variable
-        # Add merged cell coordinates to table style
-        for row_index, row in enumerate(data):
-            for col_index, cell in enumerate(row):
-                # Extract the actual cell content from the KeepInFrame object
-                #cell_content = cell._content[0] if isinstance(cell, KeepInFrame) else cell
-                cell_content = cell
-                # Extract the first line (bolded) from the cell contents
-                cell_content_lines = re.findall(r"<b>(.*?)</b>", str(cell_content))
-                event_name = cell_content_lines[0].strip() if cell_content_lines else '' 
-
-
-                # Use max to ensure at least one row is generated, even if there are no events
-                rowheights = 470 / max(1, rowamount)
-                color_to_use = get_color(event_name)
-                if row_index > 0 and row_index < rowamount:
-                    if data[row_index][col_index] != '':
-                            table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))
-                    if data[row_index + 1][col_index] == '':
-                        if row_index + 2 <= rowamount and data[row_index + 2][col_index] == '':
-                            table_style.append(('SPAN', (col_index, row_index), (col_index, row_index + 2)))
-                            rowheights = 3*rowheights
-                            if data[row_index][col_index] != '':
-                                table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index+2), color_to_use))
-                        else:
-                            table_style.append(('SPAN', (col_index, row_index), (col_index, row_index + 1)))
-                            rowheights = 2*rowheights
-                            if data[row_index][col_index] != '':
-                                table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index+1), color_to_use))
-
-                elif row_index == rowamount and data[row_index][col_index] != '':
-                    table_style.append(('BACKGROUND', (col_index, row_index), (col_index, row_index), color_to_use))   
-                
-                if type(cell_content) == Paragraph:
-                    cell_content = KeepInFrame(columnwidth, rowheights, [cell_content])
-                    data[row_index][col_index] = cell_content
-                
-
-
-        elements = []
-
-        # Add title
-        title_style = getSampleStyleSheet()["Title"]
-        if t == 0:
-            title_text = f"Veranstaltungen der Woche vom {start_of_week.strftime('%d %b %Y')} bis {end_of_week.strftime('%d %b %Y')}"
-        else:
-            title_text = f"<i>Events of the week from {start_of_week.strftime('%d %b %Y')} to {end_of_week.strftime('%d %b %Y')}</i>"
-
-        
-        title = Paragraph(title_text, title_style)
-        elements.append(title)
-
-
-        # Create table
-        if events_exist:
-            # Calculate cell heights based on content
-            row_heights = [cm * 1.5] + [rowheights] * rowamount
-            table = Table(data, colWidths=columnwidth, rowHeights=row_heights)
-            table.setStyle(TableStyle(table_style))
-            elements.append(table)
-        else:
-            msg_style = getSampleStyleSheet()["Heading1"]
-            msg_text = "Diese Woche keine Veranstaltungen<br/><i>No events this week</i>"
-            msg = Paragraph(msg_text, msg_style)
-            elements.append(Spacer(1, 2 * cm))
-            elements.append(msg)
-
-        # Create the PDF file
-        doc = SimpleDocTemplate(output_path, pagesize=landscape(A4), leftMargin=(6.35 * mm), rightMargin=(6.35 * mm), topMargin=(6.35 * mm),
-                                bottomMargin=(6.35 * mm))
-
-        # Build the document with the elements
-        doc.build(elements)
-
-        print(f'Event overview table generated: {output_path}')
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="schaukasten",
-        description="Generate an event overview for the Queerreferat"
-    )
-    now = datetime.datetime.now()
-    parser.add_argument('-w', '--week', default=now.isocalendar().week, type=int)
-    parser.add_argument('-y', '--year', default=now.year, type=int)
-    args = parser.parse_args()
-    week = datetime.date.fromisocalendar(args.year, args.week, 1)
-    generateOverview(week)
+    main()
