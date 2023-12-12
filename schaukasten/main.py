@@ -1,22 +1,24 @@
 from typing import Annotated
 
-import pendulum as pd
+import arrow
 import typer
 from read import read_calendar_from_url
+
+from schaukasten.events import EventSpan
 
 
 def main(
     year: Annotated[
         int,
         typer.Argument(
-            default_factory=pd.now().year,
+            default_factory=arrow.now().year,
             help="The year, for which to create the docs. The default is the current year.",
         ),
     ],
     week: Annotated[
         int,
         typer.Argument(
-            default_factory=pd.now().week_of_year,
+            default_factory=arrow.now().week,
             min=1,
             max=52,
             help="The week, for which to create the docs. The default is the current week.",
@@ -31,7 +33,12 @@ def main(
         ),
     ] = "",
 ):
-    fetched_calendar = read_calendar_from_url(url)
+    span_start = arrow.get((year, week, 1))
+    span_end = span_start.ceil("week")
+
+    fetched_ical_calendar = read_calendar_from_url(url)
+    events = EventSpan.from_ical(fetched_ical_calendar, span_start, span_end)
+    print("done")
 
 
 if __name__ == "__main__":

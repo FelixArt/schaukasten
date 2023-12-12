@@ -15,7 +15,7 @@ def url_is_valid(x: str) -> bool:
         return False
 
 
-def read_calendar_from_url(url: str):
+def read_calendar_from_url(url: str) -> Calendar:
     """
     Reads a calendar from a url that must be provided.
     """
@@ -29,5 +29,4 @@ def read_calendar_from_url(url: str):
             f"The request to the url {url} returned status code {response.status_code}"
         )
 
-    calendar = Calendar.from_ical(response.text)
-    return
+    return Calendar.from_ical(response.text)
