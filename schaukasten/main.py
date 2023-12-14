@@ -3,6 +3,7 @@ from typing import Annotated
 import arrow
 import typer
 from read import read_calendar_from_url
+from rich import print
 
 from schaukasten.events import EventSpan
 
@@ -25,18 +26,14 @@ def main(
         ),
     ],
     url: Annotated[
-        str,
-        typer.Option(
-            help="The URL where to source calendar is found.",
-            envvar="CALENDAR_URL",
-            show_default=False,
-        ),
-    ] = "",
+        str, typer.Option(help="The URL where to source calendar is found.")
+    ] = "https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics",
 ):
     span_start = arrow.get((year, week, 1))
     span_end = span_start.ceil("week")
 
     fetched_ical_calendar = read_calendar_from_url(url)
+    
     events = EventSpan.from_ical(fetched_ical_calendar, span_start, span_end)
     print("done")
 
