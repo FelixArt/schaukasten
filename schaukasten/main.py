@@ -33,9 +33,11 @@ def main(
     span_end = span_start.ceil("week")
 
     fetched_ical_calendar = read_calendar_from_url(url)
-    
+
     events = EventSpan.from_ical(fetched_ical_calendar, span_start, span_end)
-    print("done")
+    # TODO: check in rich table
+    # TODO: render and send to file
+    # TODO: proper defaulting and more typer.Options.
 
 
 if __name__ == "__main__":

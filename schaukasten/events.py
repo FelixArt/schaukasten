@@ -127,3 +127,4 @@ class EventSpan(BaseModel):
         return cls(
             start=start, end=end, events=[Event.from_ical(vevent) for vevent in vevents]
         )
+        # TODO: handle missing values

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<style>
+    @font-face {
+        font-family: opensans;
+        src: url("./static/fonts/OpenSans-Regular.ttf");
+    }
+
+    #body {
+        font-family: opensans, Arial, Helvetica, sans-serif;
+    }
+
+    .table-body {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+    }
+
+    .day {
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+    }
+</style>
+
+<body>
+
+    <h1>Veranstaltungen der Kalenderwoche {{weekinfo.week}}</h1>
+    <div class="table-body">
+        {% for day, events in weekinfo.events.items() %}
+        <div class="day">
+            <h2>{{day}}</h2>
+            {% for event in events %}
+            <div>
+                <h3>{{event.title}}</h3>
+                <span>{{event.description}}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+
+</html>
