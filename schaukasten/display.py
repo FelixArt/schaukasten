@@ -1,12 +1,18 @@
-from collections import defaultdict
-from enum import IntEnum, auto
+from enum import IntEnum, StrEnum, auto
 from pathlib import Path
-from typing import Self
+from typing import Annotated, Self
 
+import arrow
 from jinja2 import Environment, PackageLoader
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
+from rich.table import Table
 
-from schaukasten.events import EventSpan, Language
+from schaukasten.events import EventSpan
+
+
+class Language(StrEnum):
+    DE = auto()
+    EN = auto()
 
 
 class Weekday(IntEnum):
@@ -19,47 +25,64 @@ class Weekday(IntEnum):
     SUNDAY = auto()
 
 
-class RenderableEventInfo(BaseModel):
+class RenderableEvent(BaseModel):
     title: str
     description: str
+    start: arrow.Arrow
+    end: arrow.Arrow
+    place: str
     # TODO: colors
 
 
-class RenderableWeekInfo(BaseModel):
-    week: int
+class RenderableEventSpan(BaseModel):
+    start: arrow.Arrow
+    end: arrow.Arrow
     lang: Language
-    events: dict[Weekday, list[RenderableEventInfo]]
+    events: Annotated[
+        list[RenderableEvent],
+        AfterValidator(lambda events: list(sorted(events, key=lambda e: e.start))),
+    ]
 
     @classmethod
     def from_eventspan(cls: Self, events: EventSpan, lang: Language) -> Self:
-        if events.start.isocalendar[1] != events.start.isocalendar[1]:
-            raise ValueError(
-                "Only EventSpans of 1 or less than 1 week can be rendered as WeekInfo!"
+        events = [
+            RenderableEvent(
+                title=event.title.model_dump()[lang],
+                description=event.description.model_dump()[lang],
+                start=event.start,
+                end=event.end,
+                place=event.place,
             )
-
-        event_dict = defaultdict(list)
-        for event in events.events:
-            dayofweek = Weekday[event.start.isoweekday()]
-
-            event_dict[dayofweek].append(
-                RenderableEventInfo(
-                    title=event.title[lang], description=event.description[lang]
-                )
-            )
-        return cls(week=events.start.isocalendar[1], lang=lang, events=event_dict)
+            for event in events.events
+        ]
+        return cls(start=events.start, lang=lang, events=events, end=events.end)
 
 
-def render_html_from_weekinfo(
-    weekinfo: RenderableWeekInfo, template_name: str = "table.html.jinja"
+# def render_html_from_weekinfo(
+#     weekinfo: RenderableEvent, template_name: str = "table.html.jinja"
+# ):
+#     template = Environment(
+#         loader=PackageLoader("schaukasten"), autoescape=True
+#     ).get_template(template_name)
+
+#     return template.render(weekinfo=weekinfo)
+#     # TODO: return or write to file?
+
+
+# def render_html_as_pdf(path_to_html: Path):
+#     raise NotImplementedError
+#     # TODO: implement
+
+
+def render_in_terminal(
+    weekinfo: RenderableEventSpan, template_name: str = "table.html.jinja"
 ):
-    template = Environment(
-        loader=PackageLoader("schaukasten"), autoescape=True
-    ).get_template(template_name)
+    table = Table(title=f"Week {weekinfo.start.isocalendar()[1]} (Langugage = {weekinfo.lang.value})")
+    table.add_column("Tag", justify="right")
+    table.add_column("Startzeit", justify="right")
+    table.add_column("Endzeit", justify="right")
+    table.add_column("Titel", justify="left")
 
-    return template.render(weekinfo=weekinfo)
-    # TODO: return or write to file?
-
-
-def render_html_as_pdf(path_to_html: Path):
-    raise NotImplementedError
-    # TODO: implement
+    for day, events in weekinfo.events.items():
+        for event in events:
+            pass

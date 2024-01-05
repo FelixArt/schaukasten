@@ -882,4 +882,4 @@ pytz = "*"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "a1ddee2975acb1db8991e31d58dcd1f59fda4393d48c6179b144013b2bbecec9"
+content-hash = "18d29d2ea03b0f0aba3713596f9050742e488a608a6c5e9b9444746c7afeda99"

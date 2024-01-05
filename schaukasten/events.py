@@ -1,17 +1,95 @@
 import re
+import stat
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import Annotated, Self
+from typing import Annotated, Optional, Self
 
 import arrow
 import recurring_ical_events
 from icalendar import Calendar, Event
-from pydantic import AfterValidator, BaseModel, PlainSerializer, PlainValidator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    PlainSerializer,
+    PlainValidator,
+    ValidationInfo,
+    create_model,
+    field_validator,
+)
 
 
-class Language(StrEnum):
-    GERMAN = auto()
-    ENGLISH = auto()
+class LangField(BaseModel):
+    de: str
+    en: str
+    # might need to be optional for cases with interdependent defaults
+
+
+class Title(LangField):
+    @field_validator("de")
+    def provide_default_de(cls, de_title):
+        return de_title or "Kein Titel"
+
+    @field_validator("en")
+    def provide_default(cls, en_title: Optional[str], validation_info: ValidationInfo):
+        return en_title or validation_info.data["de"]
+
+    @classmethod
+    def from_str(cls: Self, str_inp: str) -> Self:
+        """
+        Create an instance of the class from a string input. splitting titles on "|" and stripping whitespace.
+
+        Args:
+            cls (type): The class type.
+            str_inp (str): The str_inp string.
+
+        Returns:
+            Self: An instance of the class.
+
+        """
+        titles = [title.strip() for title in str_inp.split("|")]
+
+        # set none if titles aren't given and let field validators handle defaults
+        return cls(
+            de=titles[0] if len(titles) > 0 else None,
+            en=titles[1] if len(titles) > 1 else None,
+        )
+
+
+class Description(LangField):
+    @field_validator("de")
+    def provide_default_de(cls, de_description):
+        return de_description or ""
+
+    @field_validator("en")
+    def provide_default_en(
+        cls, en_description: Optional[str], validation_info: ValidationInfo
+    ):
+        return en_description or validation_info.data["de"]
+
+    @classmethod
+    def from_str(cls: Self, str_inp: str) -> Self:
+        """
+        Create an instance of the class from a string input. removing html markers from description and splitting on triple repetitions of "-" or "-" to languages.
+
+        Args:
+            cls (type): The class type.
+            str_inp (str): The str_inp string.
+
+        Returns:
+            Self: An instance of the class.
+
+        """
+        #
+        raw_description_cleaned = re.sub(r"<.*?>", "", str_inp).replace("\xa0", " ")
+        descriptions = re.split(r"[-_]{3,}", raw_description_cleaned)
+        descriptions = [desc.strip() for desc in descriptions]
+
+        # set none if descriptions aren't given and let field validators handle defaults
+        return cls(
+            de=descriptions[0] if len(descriptions) > 0 else None,
+            en=descriptions[1] if len(descriptions) > 1 else None,
+        )
 
 
 class ICalKeys(StrEnum):
@@ -47,15 +125,15 @@ ArrowType = Annotated[
 ]
 
 
-class Event(BaseModel):
+class MultiLangEvent(BaseModel):
     """
     Represents an event with start and end times, title, description, and place. The title and description are dicts with a Language Enum Member as key and the string in that language as value. The place defaults to the Queerreferats Address.
     """
 
     start: ArrowType
     end: ArrowType
-    title: dict[Language, str]
-    description: dict[Language, str]
+    title: Title
+    description: Description
     place: str = "Queerreferat an den Aachener Hochschulen e.V.\nGerlachstr. 20-22\n52064 Aachen, DE"
 
     @classmethod
@@ -70,27 +148,12 @@ class Event(BaseModel):
         :rtype: Self
         """
 
-        # splitting titles on "|" and giving language keys
-        titles = [
-            title.strip() for title in str(ical_event[ICalKeys.SUMMARY.name]).split("|")
-        ]
-        title_dict = dict(zip(list(Language), titles))
-
-        # removing html markers from description and splitting on triple repetitions of "-" or "-" to languages
-        # todo ckeck if necessary
-        raw_description_cleaned = re.sub(
-            r"<.*?>", "", str(ical_event[ICalKeys.DESCRIPTION.name])
-        ).replace("\xa0", " ")
-        descriptions = re.split(r"[-_]{3,}", raw_description_cleaned)
-        descriptions = [desc.strip() for desc in descriptions]
-        description_dict = dict(zip(list(Language), descriptions))
-
         # constructing event
         return cls(
             start=ical_event.get(ICalKeys.DTSTART.name).dt,
             end=ical_event.get(ICalKeys.DTEND.name).dt,
-            title=title_dict,
-            description=description_dict,
+            title=Title.from_str(ical_event[ICalKeys.SUMMARY.name]),
+            description=Description.from_str(ical_event[ICalKeys.DESCRIPTION.name]),
             place=ical_event.get(ICalKeys.LOCATION.name),
         )
 
@@ -99,7 +162,7 @@ class EventSpan(BaseModel):
     start: ArrowType
     end: ArrowType
     events: Annotated[
-        list[Event],
+        list[MultiLangEvent],
         AfterValidator(lambda events: list(sorted(events, key=lambda e: e.start))),
     ]
 
@@ -127,4 +190,3 @@ class EventSpan(BaseModel):
         return cls(
             start=start, end=end, events=[Event.from_ical(vevent) for vevent in vevents]
         )
-        # TODO: handle missing values
