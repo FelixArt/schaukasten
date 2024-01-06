@@ -10,11 +10,9 @@ from icalendar import Calendar, Event
 from pydantic import (
     AfterValidator,
     BaseModel,
-    Field,
     PlainSerializer,
     PlainValidator,
     ValidationInfo,
-    create_model,
     field_validator,
 )
 

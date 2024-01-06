@@ -13,12 +13,14 @@ def url_is_valid(x: str) -> bool:
         return all([result.scheme, result.netloc])
     except:
         return False
+    # TODO: make this a callback?
 
 
 def read_calendar_from_url(url: str) -> Calendar:
     """
     Reads a calendar from a url that must be provided.
     """
+    # TODO: status anzeige
 
     if not url or not url_is_valid(url):
         raise ValueError(f"{url} is not a valid URL.")
