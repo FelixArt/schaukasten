@@ -1,30 +1,27 @@
-from dataclasses import dataclass
+from operator import call
 from typing import Annotated, Optional
 
 import arrow
 import typer
-from read import read_calendar_from_url
+from read import read_calendar_from_url, url_is_valid
 from rich import print
 
 from schaukasten.display import RenderableEventSpan
 from schaukasten.events import EventSpan
-from schaukasten.options import Language
-from schaukasten.terminal import confirm_table
+from schaukasten.terminal import confirm_table, print_intro_text
+from schaukasten.types import Language
+
+from rich.traceback import install
+
+install(show_locals=False)
+
+DEFAULT_URL = "https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics"
 
 
-@dataclass
-class common_options:
-    url: Annotated[
-        str,
-        typer.Option(
-            help="The URL where to source calendar is found.",
-            default="https://calendar.google.com/calendar/ical/queerreferat.aachen%40gmail.com/public/basic.ics",
-        ),
-    ]
-    lang: Annotated[
-        Optional[Language],
-        typer.Option(help="The language to use for rendering.", default=None),
-    ]
+def url_callback(url: str) -> str:
+    if not url_is_valid(url):
+        raise typer.BadParameter("The url must be valid.")
+    return url
 
 
 app = typer.Typer()
@@ -48,12 +45,22 @@ def pdf(
             help="The week, for which to create the docs. The default is the current week.",
         ),
     ],
-    url: common_options.url,
-    lang: common_options.lang,
+    lang: Annotated[
+        Optional[Language],
+        typer.Option(help="The language to use for rendering."),
+    ] = None,
+    url: Annotated[
+        str,
+        typer.Option(
+            help="The URL where to source calendar is found.", callback=url_callback
+        ),
+    ] = DEFAULT_URL,
 ):
     start = arrow.get((year, week, 1))
     end = start.ceil("week")
     lang = [lang] if lang else list(Language)
+
+    print_intro_text(year, week, lang, url)
 
     fetched_ical_calendar = read_calendar_from_url(url)
     events = EventSpan.from_ical(fetched_ical_calendar, start, end)

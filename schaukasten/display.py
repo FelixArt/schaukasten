@@ -1,28 +1,27 @@
 from typing import Annotated, Self
 
-import arrow
 from jinja2 import Environment, PackageLoader
-from options import Language
 from pydantic import AfterValidator, BaseModel
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
 from schaukasten.events import EventSpan
+from schaukasten.types import ArrowType, Language
 
 
 class RenderableEvent(BaseModel):
     title: str
     description: str
-    start: arrow.Arrow
-    end: arrow.Arrow
+    start: ArrowType
+    end: ArrowType
     place: str
     # TODO: colors
 
 
 class RenderableEventSpan(BaseModel):
-    start: arrow.Arrow
-    end: arrow.Arrow
+    start: ArrowType
+    end: ArrowType
     lang: Language
     events: Annotated[
         list[RenderableEvent],

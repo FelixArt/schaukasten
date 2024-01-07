@@ -1,15 +1,25 @@
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from schaukasten.display import RenderableEventSpan, print_to_terminal
-from schaukasten.options import Language
+from schaukasten.display import RenderableEventSpan
+from schaukasten.types import Language
 
-# def print_introtext():
-# TODO: implement intro text
+
+def print_intro_text(year: int, week: int, langs: Language, url: str):
+    console = Console()
+    console.rule("[bold]Welcome to the Queerrefs Schaukasten Script![/bold]")
+    console.print(
+        "This script will help you to create a pdf for the queerreferat schaukasten."
+    )
+    console.print(
+        f"You selected the following options:\n Selected Languages: {', '.join([str(l) for l in langs])}\n year: {year}\n week: {week}\n url: {url} \n\n"
+    )
+    # TODO: rich columns for this
+
 
 def confirm_table(events: RenderableEventSpan, lang: Language):
     console = Console()
-    print_to_terminal(events, console)
+    events.print_to_terminal(console)
 
     user_not_yet_confirmed = True
     while user_not_yet_confirmed:
@@ -38,7 +48,7 @@ def confirm_table(events: RenderableEventSpan, lang: Language):
                 if i not in filter_indices
             ],
         )
-        print_to_terminal(new_events, console)
+        new_events.print_to_terminal(console)
         user_not_yet_confirmed = Confirm.ask("Are these the events you want to print?")
     return new_events
 
